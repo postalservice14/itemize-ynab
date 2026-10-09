@@ -79,7 +79,7 @@ call from John are collected under "Open decisions for John" near the end.
 - The parent memo is `memo.AppendMarker(existing memo, key)`; existing text is kept and never replaced. The one exception comes from `AppendMarker` itself: if memo plus marker would exceed YNAB's 200-character limit, the tail of the existing text is cut and ends in "…" so the marker always fits. When the existing memo is empty, a single-category charge uses its item names as the base. A multi-category `split_in_place` parent keeps its existing memo plus the marker (marker only if the memo was empty), since the item names are on the subtransactions. Only the sibling and a staged split carry the marker alone.
 - The clock is injected (`Config.Now`); the writer never reads the system time.
 - A no-match charge is pre-staged only if: the card maps to an account; the charge has a date; `now - charge date < 10 days` (the limit is fixed at 10, not a config key; measured from the charge date at midnight UTC, so it means strictly under 240 hours); the date is no more than one day in the future (time-zone slack); the charge's match window (charge date minus `days_before`) does not start before the first loaded transaction day (`Config.LoadedFrom`, set by the orchestrator to the transactions' lower bound; otherwise a same-amount transaction could exist unseen, note "charge date window starts before the loaded transaction range; widen -days or re-run"); and no transaction in that account has the same amount within the match window, whatever its payee, split state or marker. Otherwise the charge is `skipped` with a note naming the failed condition and is not recorded, so it is retried next run.
-- Tool-created transactions (siblings and staged) are unapproved (see Open decisions).
+- Tool-created transactions (siblings and staged) are unapproved (see "Fallback shape and approval").
 
 ## Writer: -force
 
@@ -115,13 +115,17 @@ call from John are collected under "Open decisions for John" near the end.
 - The 90-day window returned only that one order. The other Walmart charges in YNAB over the same weeks are purchases made on a different Walmart account (John's spouse), so they are correctly absent from this account's purchase history. The tool is per Walmart account: one cookie store, one order history. Covering a second account would need a second cookie store and run, which is not built.
 - The exclude-list work came from this run: without `ynab.exclude_categories` the eligible set included income, bill and savings categories.
 
+## Fallback shape and approval of tool-created transactions
+
+- Status: settled 2026-10-09 (were open decisions 3 and 5). Both keep the defaults the code already had.
+- Fallback: when a charge cannot be split in place (`split_in_place: never`, or a 400 or ignored split), the writer creates a flagged, unapproved sibling split and flags the original (and marks its memo, see "needs_manual_match without the database"). Flag-only was rejected: it would make you type the split by hand. The sibling doubles the outflow until you merge or delete it. This path is rare now that split-in-place is verified to work.
+- Approval: transactions the tool creates (siblings and pre-staged charges) are unapproved, so they land in YNAB's review queue. Matched transactions keep their existing approval state.
+
 ## Open decisions for John
 
 Current defaults are what the code does today; none of these is implemented differently.
 
-3. Sibling versus flag-only for `needs_manual_match` (PRD section 11). The sibling temporarily doubles the outflow in the account; flag-only would put the proposed split in the memo and leave the original alone. Default: create the sibling; revisit after real use.
 4. Refunds in v1.1: look up which items were returned, or mirror the original order's split proportions. Default: refunds are reported as `skipped` and never changed.
-5. Approved or unapproved for tool-created transactions. Unapproved lands them in YNAB's review queue and is safer; approved saves a click. Default: unapproved. (Matched transactions keep whatever approval state they had.)
 6. A reset command for a `needs_manual_match` database row, so a forced reprocess does not require editing SQLite by hand. Default: none; delete the `ynab_charges` row manually.
 7. Ctrl-C exit code: 1 today; 130 is the shell convention. Default: 1.
 9. Whether a dry run should avoid refreshing the local transaction cache. Avoiding it makes a dry run strictly read-only locally but costs a full fetch each time or a stale view. Default: it may refresh the cache.
