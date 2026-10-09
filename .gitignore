@@ -23,3 +23,6 @@ curl*.txt
 .env.*
 !.env.example
 config.local.yaml
+
+# Release build output
+/dist/

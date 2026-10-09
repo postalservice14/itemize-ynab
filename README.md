@@ -32,10 +32,18 @@ Nothing has been run against a live Walmart session or a real YNAB plan yet; see
 - A YNAB account with a Personal Access Token, a Walmart account, and an LLM API
   key (Anthropic or OpenAI).
 
+Download a prebuilt binary for macOS, Linux or Windows from
+[Releases](https://github.com/postalservice14/itemize-ynab/releases), or install
+or build from source:
+
 ```
+go install github.com/postalservice14/itemize-ynab/cmd/itemize-ynab@latest
 make build            # writes bin/itemize-ynab
 bin/itemize-ynab version
 ```
+
+Releases are cut by pushing a `v*` tag; `.github/workflows/release.yml` runs the
+tests and GoReleaser (`.goreleaser.yaml`).
 
 Other targets: `test`, `lint`, `vet`, `cover`, `tidy`, `check` (vet, lint, tests).
 

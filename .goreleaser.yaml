@@ -1,0 +1,41 @@
+version: 2
+
+project_name: itemize-ynab
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/itemize-ynab
+    binary: itemize-ynab
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/postalservice14/itemize-ynab/internal/version.Version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - config.yaml
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
