@@ -23,8 +23,9 @@ What it deliberately does not do (v1):
 Design is based on [eshaffer321/itemize](https://github.com/eshaffer321/itemize)
 and the Walmart client is
 [eshaffer321/walmart-client-go](https://github.com/eshaffer321/walmart-client-go) v2.
-Nothing has been run against a live Walmart session or a real YNAB plan yet; see
-`docs/DECISIONS.md` for what is still open.
+It has been run against a live Walmart account and a real YNAB plan, including
+an immediate rerun that wrote nothing; see `docs/DECISIONS.md` for what is still
+open.
 
 ## 1. Requirements and install
 
