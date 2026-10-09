@@ -9,13 +9,13 @@ import (
 	"github.com/postalservice14/itemize-ynab/internal/adapters/ynab"
 )
 
-func listCategories(ctx context.Context, c *ynab.Client, w io.Writer, eligibleOnly bool) error {
+func listCategories(ctx context.Context, c *ynab.Client, w io.Writer, eligibleOnly bool, excluded []string) error {
 	cats, err := c.ListCategories(ctx)
 	if err != nil {
 		return err
 	}
 	if eligibleOnly {
-		cats = ynab.EligibleCategories(cats)
+		cats = ynab.EligibleCategories(cats, excluded...)
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "CATEGORY\tGROUP\tID\t")

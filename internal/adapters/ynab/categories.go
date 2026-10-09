@@ -38,11 +38,16 @@ func (e *AmbiguousCategoryError) Is(target error) bool { return target == ErrCat
 // EligibleCategories returns the categories the categorizer may assign items
 // to, keeping the input order. It drops hidden and deleted categories, YNAB's
 // internal categories (the "Internal Master Category" group and "Inflow: Ready
-// to Assign") and the "Credit Card Payments" group.
-func EligibleCategories(all []Category) []Category {
+// to Assign"), the "Credit Card Payments" group and every category whose name
+// is in excluded (ignoring case and surrounding space, in any group).
+func EligibleCategories(all []Category, excluded ...string) []Category {
+	skip := make(map[string]struct{}, len(excluded))
+	for _, name := range excluded {
+		skip[normalize(name)] = struct{}{}
+	}
 	var out []Category
 	for _, c := range all {
-		if isEligible(c) {
+		if _, drop := skip[normalize(c.Name)]; !drop && isEligible(c) {
 			out = append(out, c)
 		}
 	}

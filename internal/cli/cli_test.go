@@ -161,3 +161,37 @@ func TestTokenCannotBePassedAsFlag(t *testing.T) {
 }
 
 var _ = http.StatusOK
+
+// configExcluding writes a config whose exclude_categories lists names.
+func configExcluding(t *testing.T, names ...string) string {
+	t.Helper()
+	t.Setenv("YNAB_TOKEN", testToken)
+	yaml := "ynab:\n  token: \"${YNAB_TOKEN}\"\n  plan_id: plan-1\n  exclude_categories:\n"
+	for _, n := range names {
+		yaml += "    - " + n + "\n"
+	}
+	cfg := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(cfg, []byte(yaml), 0o600))
+	return cfg
+}
+
+func TestCategories_eligibleFlagHonorsExcludeCategories(t *testing.T) {
+	srv := ynabtest.New(t)
+	srv.On("GET", "/plans/plan-1/categories", categoriesReply())
+
+	r := runWithConfig(t, srv, configExcluding(t, "Pets"), "ynab", "categories", "-eligible")
+
+	require.Equal(t, 0, r.code, r.stderr)
+	assert.Contains(t, r.stdout, "Groceries")
+	assert.NotContains(t, r.stdout, "Pets")
+}
+
+func TestCategories_withoutEligibleFlagStillListsExcluded(t *testing.T) {
+	srv := ynabtest.New(t)
+	srv.On("GET", "/plans/plan-1/categories", categoriesReply())
+
+	r := runWithConfig(t, srv, configExcluding(t, "Pets"), "ynab", "categories")
+
+	require.Equal(t, 0, r.code, r.stderr)
+	assert.Contains(t, r.stdout, "Pets")
+}

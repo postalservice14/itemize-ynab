@@ -90,7 +90,7 @@ matched transaction itself.
 - `always`: try it on every charge; a rejected charge still falls back to the sibling path.
 - `never`: always use the sibling path (a flagged, user-entered split next to the original).
 
-Whether YNAB accepts an in-place split has not been tested (section 4, `probe-split`).
+`probe-split` showed on 2026-10-09 that YNAB accepts an in-place split on a plain card transaction (section 4). YNAB cannot un-split it through the API.
 
 Find the IDs and names to put in the file:
 
@@ -103,6 +103,14 @@ bin/itemize-ynab -config config.local.yaml ynab categories -eligible   # only wh
 Hidden and closed entries are marked. Eligible categories exclude hidden and
 deleted ones, YNAB's internal categories and the Credit Card Payments group. A
 category name that exists in more than one group is ambiguous: an override target like that is rejected, and a charge the model assigns to it fails.
+
+By default every other category is eligible, including income, bill and savings
+categories that a grocery item should never land in. List the ones to keep out
+under `ynab.exclude_categories` (names, case-insensitive, matched in any group).
+The categorizer is never offered them, `ynab categories -eligible` and the
+`probe-split` default leave them out, and a `category_overrides` target that is
+excluded is rejected. Every entry must name a category in the plan: a misspelled
+entry fails the live check instead of silently excluding nothing.
 
 ### Environment variables
 

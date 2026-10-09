@@ -22,7 +22,21 @@ func testCatalog() *catalog {
 		{ID: "c5", Name: "Gone", GroupName: "Food", Deleted: true},
 		{ID: "c6", Name: "Inflow: Ready to Assign", GroupName: "Internal Master Category"},
 		{ID: "c7", Name: "Visa", GroupName: "Credit Card Payments"},
-	})
+	}, nil)
+}
+
+func TestCatalog_excludedCategoriesAreNeitherOfferedNorResolved(t *testing.T) {
+	c := newCatalog([]ynab.Category{
+		{ID: "c1", Name: "Groceries", GroupName: "Food"},
+		{ID: "c2", Name: "Mortgage", GroupName: "Housing"},
+	}, []string{" mortgage "})
+
+	assert.Equal(t, []string{"Groceries"}, c.allowed())
+	_, ok := c.resolve("Mortgage")
+	assert.False(t, ok)
+	id, ok := c.resolve("Groceries")
+	assert.True(t, ok)
+	assert.Equal(t, "c1", id)
 }
 
 func TestCatalog_allowedIsEligibleNamesDeduplicated(t *testing.T) {

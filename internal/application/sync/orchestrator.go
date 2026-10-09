@@ -170,7 +170,7 @@ func (o *Orchestrator) prepare(ctx context.Context, opts Options) (*run, error) 
 	return &run{
 		o:       o,
 		opts:    opts,
-		cat:     newCatalog(cats),
+		cat:     newCatalog(cats, y.ExcludeCategories),
 		wcfg:    wcfg,
 		since:   since,
 		txnFrom: txnFrom,

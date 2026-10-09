@@ -198,7 +198,7 @@ ynab:
 	}
 	accountExists := func(id string) bool { return id == "good-acct" }
 
-	err = cfg.YNAB.CrossCheck(findCategory, accountExists)
+	err = cfg.YNAB.CrossCheck(findCategory, func(string) bool { return true }, accountExists)
 
 	require.ErrorIs(t, err, config.ErrInvalid)
 	msg := err.Error()
@@ -214,7 +214,7 @@ func TestCrossCheck_passesWhenEverythingExists(t *testing.T) {
 	cfg, err := config.Parse([]byte("ynab:\n  token: a\n  accounts:\n    \"0001\": x\n  category_overrides:\n    A: B\n"), env(nil))
 	require.NoError(t, err)
 
-	err = cfg.YNAB.CrossCheck(func(string) error { return nil }, func(string) bool { return true })
+	err = cfg.YNAB.CrossCheck(func(string) error { return nil }, func(string) bool { return true }, func(string) bool { return true })
 
 	assert.NoError(t, err)
 }
@@ -307,4 +307,25 @@ func TestLoad_resolvesAgainstConfigDirAndHome(t *testing.T) {
 	home, herr := os.UserHomeDir()
 	require.NoError(t, herr)
 	assert.Equal(t, filepath.Join(home, ".walmart-api", "cookies.json"), cfg.Walmart.CookieFile)
+}
+
+func TestParse_excludeCategories(t *testing.T) {
+	cfg, err := config.Parse([]byte("ynab:\n  token: a\n  exclude_categories:\n    - Mortgage\n    - Tithe\n"), env(nil))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Mortgage", "Tithe"}, cfg.YNAB.ExcludeCategories)
+}
+
+func TestParse_excludeCategoriesDefaultsToNone(t *testing.T) {
+	cfg, err := config.Parse([]byte("ynab:\n  token: a\n"), env(nil))
+
+	require.NoError(t, err)
+	assert.Empty(t, cfg.YNAB.ExcludeCategories)
+}
+
+func TestParse_excludeCategoriesBlankEntryRejected(t *testing.T) {
+	_, err := config.Parse([]byte("ynab:\n  token: a\n  exclude_categories:\n    - Mortgage\n    - \"  \"\n"), env(nil))
+
+	require.ErrorIs(t, err, config.ErrInvalid)
+	assert.Contains(t, err.Error(), "exclude_categories")
 }

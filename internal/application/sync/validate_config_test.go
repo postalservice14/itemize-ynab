@@ -53,3 +53,37 @@ func TestValidateConfig_okWhenEverythingExists(t *testing.T) {
 
 	assert.NoError(t, err)
 }
+
+func TestValidateConfig_excludedCategories(t *testing.T) {
+	cats := []ynab.Category{
+		{ID: "1", Name: "Groceries", GroupName: "Food"},
+		{ID: "2", Name: "Mortgage", GroupName: "Housing"},
+	}
+
+	t.Run("a name that is in the plan is fine", func(t *testing.T) {
+		err := ValidateConfig(config.YNAB{ExcludeCategories: []string{"mortgage"}}, cats, nil)
+
+		assert.NoError(t, err)
+	})
+
+	t.Run("a name that matches no category is a typo, not a silent no-op", func(t *testing.T) {
+		err := ValidateConfig(config.YNAB{ExcludeCategories: []string{"Mortgge", "Mortgage"}}, cats, nil)
+
+		require.ErrorIs(t, err, config.ErrInvalid)
+		assert.Contains(t, err.Error(), "exclude_categories")
+		assert.Contains(t, err.Error(), "Mortgge")
+		assert.NotContains(t, err.Error(), `"Mortgage"`)
+	})
+
+	t.Run("an override cannot target an excluded category", func(t *testing.T) {
+		cfg := config.YNAB{
+			ExcludeCategories: []string{"Mortgage"},
+			CategoryOverrides: map[string]string{"Rent": "Mortgage"},
+		}
+
+		err := ValidateConfig(cfg, cats, nil)
+
+		require.ErrorIs(t, err, config.ErrInvalid)
+		assert.Contains(t, err.Error(), "Rent")
+	})
+}

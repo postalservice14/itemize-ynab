@@ -155,3 +155,28 @@ func TestProbe_categoriesFlag_ambiguousNameListsTheGroupsAndDoesNotWrite(t *test
 	assert.Contains(t, r.stderr, "Holidays")
 	assert.Equal(t, 0, srv.WriteCount())
 }
+
+func TestProbe_categoriesFlag_excludedCategoryIsRejectedWithNoWrite(t *testing.T) {
+	srv := ynabtest.New(t)
+	scriptProbe(srv, []ynabtest.Response{okTxn(plainTxn(""))})
+
+	r := runWithConfig(t, srv, configExcluding(t, "Pets"),
+		"ynab", "probe-split", "-yes", "-categories", "Groceries,Pets", "t1")
+
+	assert.Equal(t, 1, r.code)
+	assert.Contains(t, r.stderr, "Pets")
+	assert.Equal(t, 0, srv.WriteCount())
+}
+
+func TestProbe_defaultPickSkipsExcludedCategories(t *testing.T) {
+	srv := ynabtest.New(t)
+	scriptProbe(srv, []ynabtest.Response{okTxn(plainTxn(""))})
+
+	// Groceries and Pets are the only eligible categories; with Pets excluded
+	// the default pick has too few, rather than quietly using an excluded one.
+	r := runWithConfig(t, srv, configExcluding(t, "Pets"), "ynab", "probe-split", "-yes", "t1")
+
+	assert.Equal(t, 1, r.code)
+	assert.Contains(t, r.stderr, "at least 2 eligible")
+	assert.Equal(t, 0, srv.WriteCount())
+}

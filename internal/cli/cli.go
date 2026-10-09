@@ -140,8 +140,8 @@ func runYNAB(ctx context.Context, configPath string, args []string, env Env) err
 		if _, err := parseInterspersed(fs, subArgs); err != nil {
 			return err
 		}
-		return withClient(configPath, env, func(c *ynab.Client, _ *config.Config) error {
-			return listCategories(ctx, c, env.Stdout, eligible)
+		return withClient(configPath, env, func(c *ynab.Client, cfg *config.Config) error {
+			return listCategories(ctx, c, env.Stdout, eligible, cfg.YNAB.ExcludeCategories)
 		})
 	case "accounts":
 		if _, err := parseInterspersed(newFlagSet(sub), subArgs); err != nil {
@@ -168,7 +168,7 @@ func runYNAB(ctx context.Context, configPath string, args []string, env Env) err
 			return err
 		}
 		return withClient(configPath, env, func(c *ynab.Client, cfg *config.Config) error {
-			return probeSplit(ctx, c, cfg.YNAB.PlanID, env.Stdout, pos[0], yes, names)
+			return probeSplit(ctx, c, cfg.YNAB, env.Stdout, pos[0], yes, names)
 		})
 	}
 }

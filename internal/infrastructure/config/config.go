@@ -56,6 +56,7 @@ type YNAB struct {
 	FlagColor         string
 	Accounts          map[string]string // card last 4 -> YNAB account ID
 	CategoryOverrides map[string]string // categorizer name -> YNAB category name
+	ExcludeCategories []string          // YNAB category names the categorizer may never use
 	MatchWindow       MatchWindow
 	SplitInPlace      string // auto | always | never
 }
@@ -99,6 +100,7 @@ type rawYNAB struct {
 	FlagColor         string            `yaml:"flag_color"`
 	Accounts          map[string]string `yaml:"accounts"`
 	CategoryOverrides map[string]string `yaml:"category_overrides"`
+	ExcludeCategories []string          `yaml:"exclude_categories"`
 	MatchWindow       struct {
 		DaysBefore *int `yaml:"days_before"`
 		DaysAfter  *int `yaml:"days_after"`
@@ -156,6 +158,7 @@ func parse(data []byte, lookup func(string) (string, bool), res *pathResolver) (
 		FlagColor:         exp.expand(raw.FlagColor),
 		Accounts:          exp.expandMap(raw.Accounts),
 		CategoryOverrides: exp.expandMap(raw.CategoryOverrides),
+		ExcludeCategories: raw.ExcludeCategories,
 		SplitInPlace:      exp.expand(raw.SplitInPlace),
 		MatchWindow: MatchWindow{
 			DaysBefore: intOr(raw.MatchWindow.DaysBefore, defaultDaysBefore),

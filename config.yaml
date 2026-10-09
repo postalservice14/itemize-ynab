@@ -17,6 +17,10 @@ ynab:
                                 # Example only: fails the live check unless your
                                 # plan has a "Pets" category.
     "Pet Supplies": "Pets"
+  exclude_categories:           # category names the categorizer may never use
+                                # (case-insensitive, any group). Every entry must
+                                # exist in the plan, so a typo fails the live check.
+    - "Mortgage"
   match_window:
     days_before: 2
     days_after: 10

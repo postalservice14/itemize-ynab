@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/postalservice14/itemize-ynab/internal/adapters/ynab"
+	"github.com/postalservice14/itemize-ynab/internal/infrastructure/config"
 )
 
 const probeMarker = "[itemize:probe]"
@@ -26,7 +27,7 @@ const (
 // transaction, so it refuses to write unless yes is true. names, when set, are
 // the two categories to split into (see parseProbeCategories); otherwise the
 // first two eligible categories in the plan are used.
-func probeSplit(ctx context.Context, c *ynab.Client, planID string, w io.Writer, txnID string, yes bool, names []string) error {
+func probeSplit(ctx context.Context, c *ynab.Client, cfg config.YNAB, w io.Writer, txnID string, yes bool, names []string) error {
 	orig, err := c.GetTransaction(ctx, txnID)
 	if err != nil {
 		return err
@@ -38,7 +39,7 @@ func probeSplit(ctx context.Context, c *ynab.Client, planID string, w io.Writer,
 	if err != nil {
 		return err
 	}
-	picked, err := pickProbeCategories(cats, names)
+	picked, err := pickProbeCategories(cats, names, cfg.ExcludeCategories)
 	if err != nil {
 		return err
 	}
@@ -54,7 +55,7 @@ func probeSplit(ctx context.Context, c *ynab.Client, planID string, w io.Writer,
 		return fmt.Errorf("%w: probe-split modifies a real transaction; re-run with -yes to proceed", errUsage)
 	}
 
-	if err := printRequest(w, planID, txnID, req); err != nil {
+	if err := printRequest(w, cfg.PlanID, txnID, req); err != nil {
 		return err
 	}
 	resp, err := c.UpdateTransaction(ctx, txnID, req)
@@ -104,8 +105,8 @@ func parseProbeCategories(spec string) ([]string, error) {
 // it takes the first two the categorizer may use; with names it resolves each
 // among those eligible categories, so a hidden, internal, credit card or
 // deleted category can never be chosen, and an ambiguous name is refused.
-func pickProbeCategories(cats []ynab.Category, names []string) ([2]ynab.Category, error) {
-	eligible := ynab.EligibleCategories(cats)
+func pickProbeCategories(cats []ynab.Category, names, excluded []string) ([2]ynab.Category, error) {
+	eligible := ynab.EligibleCategories(cats, excluded...)
 	if len(names) == 0 {
 		if len(eligible) < 2 {
 			return [2]ynab.Category{}, fmt.Errorf("probe-split needs at least 2 eligible categories in the plan, found %d", len(eligible))

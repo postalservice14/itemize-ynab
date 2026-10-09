@@ -22,8 +22,8 @@ type catalog struct {
 	byID     map[string]string
 }
 
-func newCatalog(all []ynab.Category) *catalog {
-	c := &catalog{eligible: ynab.EligibleCategories(all), byID: map[string]string{}}
+func newCatalog(all []ynab.Category, excluded []string) *catalog {
+	c := &catalog{eligible: ynab.EligibleCategories(all, excluded...), byID: map[string]string{}}
 	seen := map[string]bool{}
 	for _, cat := range c.eligible {
 		c.byID[cat.ID] = cat.Name

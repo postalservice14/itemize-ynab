@@ -50,6 +50,29 @@ func TestEligibleCategories(t *testing.T) {
 	}
 }
 
+func TestEligibleCategories_excludedNames(t *testing.T) {
+	cats := []ynab.Category{
+		{ID: "1", Name: "Groceries", GroupName: "Food"},
+		{ID: "2", Name: "Mortgage", GroupName: "Housing"},
+		{ID: "3", Name: "Misc", GroupName: "Housing"},
+		{ID: "4", Name: "Mortgage", GroupName: "Old"},
+	}
+	ids := func(in []ynab.Category) []string {
+		var out []string
+		for _, c := range in {
+			out = append(out, c.ID)
+		}
+		return out
+	}
+
+	assert.Equal(t, []string{"1", "3"}, ids(ynab.EligibleCategories(cats, "Mortgage")),
+		"every category with an excluded name is dropped, whatever its group")
+	assert.Equal(t, []string{"1", "3"}, ids(ynab.EligibleCategories(cats, "  mortgage ")),
+		"names match ignoring case and surrounding space")
+	assert.Equal(t, []string{"3"}, ids(ynab.EligibleCategories(cats, "Groceries", "Mortgage")))
+	assert.Equal(t, []string{"1", "2", "3", "4"}, ids(ynab.EligibleCategories(cats)), "no exclusions keeps everything")
+}
+
 func TestFindCategoryByName(t *testing.T) {
 	cats := []ynab.Category{
 		{ID: "1", Name: "Pets", GroupName: "Needs"},

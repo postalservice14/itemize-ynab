@@ -54,6 +54,11 @@ func (c *Config) Validate() error {
 	if y.MatchWindow.DaysAfter < 0 {
 		p = append(p, fmt.Sprintf("ynab.match_window.days_after %d must not be negative", y.MatchWindow.DaysAfter))
 	}
+	for i, name := range y.ExcludeCategories {
+		if strings.TrimSpace(name) == "" {
+			p = append(p, fmt.Sprintf("ynab.exclude_categories[%d] must not be blank", i))
+		}
+	}
 	for _, card := range sortedKeys(y.Accounts) {
 		if !cardLast4.MatchString(card) {
 			p = append(p, fmt.Sprintf("ynab.accounts key %q must be the card's last 4 digits", card))
@@ -68,10 +73,17 @@ func (c *Config) Validate() error {
 // CrossCheck verifies the config against live YNAB data fetched by the caller:
 // findCategory must return nil when the named category is usable (exists among
 // the eligible categories and is unambiguous) and otherwise an error saying
-// why; accountExists reports whether an account ID is in the plan. Every bad
-// override and account is listed in one error.
-func (y YNAB) CrossCheck(findCategory func(name string) error, accountExists func(id string) bool) error {
+// why; categoryKnown reports whether a name matches any category in the plan
+// (so a misspelled exclude_categories entry cannot silently exclude nothing);
+// accountExists reports whether an account ID is in the plan. Every bad
+// exclusion, override and account is listed in one error.
+func (y YNAB) CrossCheck(findCategory func(name string) error, categoryKnown func(name string) bool, accountExists func(id string) bool) error {
 	var p []string
+	for _, name := range y.ExcludeCategories {
+		if strings.TrimSpace(name) != "" && !categoryKnown(name) {
+			p = append(p, fmt.Sprintf("ynab.exclude_categories entry %q matches no category in the plan", name))
+		}
+	}
 	for _, from := range sortedKeys(y.CategoryOverrides) {
 		to := y.CategoryOverrides[from]
 		if err := findCategory(to); err != nil {
