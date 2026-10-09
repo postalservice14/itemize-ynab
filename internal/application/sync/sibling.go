@@ -22,8 +22,10 @@ func (w *Writer) sibling(ctx context.Context, job ChargeJob, orig ynab.Transacti
 		return res, writeErr(res.Key, "create sibling split", "", err)
 	}
 	res.Outcome, res.TxnID = NeedsManualMatch, created.ID
-	flag := w.cfg.FlagColor
-	_, flagErr := w.api.UpdateTransaction(ctx, orig.ID, ynab.SaveTransaction{FlagColor: &flag})
+	// The marker on the original hides it from matching, so a lost database or
+	// an unrecorded sibling cannot lead to a second sibling.
+	flag, marked := w.cfg.FlagColor, memo.AppendMarker(orig.Memo, job.Charge.Key)
+	_, flagErr := w.api.UpdateTransaction(ctx, orig.ID, ynab.SaveTransaction{FlagColor: &flag, Memo: &marked})
 	if flagErr != nil {
 		res.Note = fmt.Sprintf("sibling %s created but flagging original %s failed: %v", created.ID, orig.ID, flagErr)
 		w.log.Warn("sibling split created but the original could not be flagged",

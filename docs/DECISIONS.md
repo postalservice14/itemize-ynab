@@ -97,20 +97,21 @@ call from John are collected under "Open decisions for John" near the end.
 - LLM failures (including an invalid reply after one repair attempt) fail the order's charges (exit 2); they do not stop the run. The LLM clients use `net/http` with a configurable base URL for httptest and add no dependencies.
 - Toolchain and dependencies are at their latest releases as of 2026-10-09: Go 1.27.2 (`go` directive and `.tool-versions`), golangci-lint 2.14.0, `modernc.org/sqlite` v1.60.1, `github.com/pressly/goose/v3` v3.28.0, `github.com/eshaffer321/walmart-client-go/v2` v2.2.1, and the CI actions at their latest majors (checkout v7, setup-go v7, golangci-lint-action v9). The first build pinned Go 1.25.x to match the upstream design reference; that constraint was dropped on request.
 
-## Known gap: needs_manual_match without the database
+## needs_manual_match without the database
 
-- On `needs_manual_match` the sibling carries the marker but the flagged original does not (the writer only sets its flag). The SQLite record is the only thing stopping a second sibling: with the record present, both a normal rerun (`already_processed`) and a `-force` rerun (`skipped`) write nothing. If the database is lost, a rerun (forced or not) matches the original again and creates a second sibling and a second flag.
-- The same gap opens without losing the database:
-  - When recording fails after a sibling was created. The row's note then names the sibling, says a rerun will create a second sibling and that one must be deleted by hand.
-  - Ambiguous write timeouts: the YNAB client times out after 30 seconds, but a POST or PUT can time out after YNAB applied it. The charge fails and is not recorded. For a categorized, split or staged charge the applied marker still blocks a second write; a sibling POST applied after its timeout is unrecorded, its original is unmarked (and unflagged), and a rerun creates a second sibling.
-- Recommended mitigation: 1(b) below, marking the original's memo when flagging it, closes all three cases. Open decision for John, not implemented; see item 1 below.
+- Status: settled (was open decision 1, option b). When the writer flags the original it also appends the `[itemize:...]` marker to its memo, in the same PUT, so the matcher no longer sees it. A lost database, or a sibling that was created but not recorded, no longer leads to a second sibling, provided the flag PUT succeeded.
+- Remaining gap: a sibling POST that YNAB applied but the client timed out on (30 seconds). The charge fails before the flag PUT, so the original is unmarked and unflagged, and a rerun creates a second sibling. Delete one by hand.
+- If the flag PUT itself fails after the sibling exists, the charge is still recorded with a note; the original has no marker, so only the database row stops a second sibling.
+
+## A 200 with a different split than requested
+
+- Status: settled (was open decision 2). When YNAB answers a split-in-place update with live subtransactions that differ from the request, the writer restores the memo (and category if changed), creates no sibling, records nothing, and returns an error naming the transaction. The original may hold an unverified split, so check it by hand. Split-in-place is switched off for the rest of the run in `auto` mode, as after any rejection.
+- A 200 with no live subtransactions still counts as "ignored": restore the memo, then create a flagged sibling.
 
 ## Open decisions for John
 
 Current defaults are what the code does today; none of these is implemented differently.
 
-1. Lost database and `needs_manual_match`. Gap above. Mitigations: (a) exclude transactions that already carry the configured flag color from matching (cheap and restart-safe, but it also skips originals you flagged for other reasons); (b) append the marker to the original's memo when flagging it (the original becomes invisible to the matcher; your later manual match keeps or drops the marker). Default: neither; the database row is the only guard.
-2. A 200 whose subtransactions differ from what was sent. Today the writer treats it as "ignored": restores the memo and creates a flagged sibling, leaving the original with an unverified split, so the amount can be counted twice until fixed by hand. The recommended alternative is: when the reply contains live subtransactions that differ from the request, restore the memo and return an error naming the transaction, WITHOUT creating a sibling (and recording nothing); keep the restore-and-sibling path for the "0 subtransactions = ignored" case. Default: restore and sibling.
 3. Sibling versus flag-only for `needs_manual_match` (PRD section 11). The sibling temporarily doubles the outflow in the account; flag-only would put the proposed split in the memo and leave the original alone. Default: create the sibling; revisit after real use.
 4. Refunds in v1.1: look up which items were returned, or mirror the original order's split proportions. Default: refunds are reported as `skipped` and never changed.
 5. Approved or unapproved for tool-created transactions. Unapproved lands them in YNAB's review queue and is safer; approved saves a click. Default: unapproved. (Matched transactions keep whatever approval state they had.)

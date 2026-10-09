@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/postalservice14/itemize-ynab/internal/adapters/ynab"
 	"github.com/postalservice14/itemize-ynab/internal/adapters/ynab/ynabtest"
+	"github.com/postalservice14/itemize-ynab/internal/domain/memo"
 )
 
 // twoMultiCharges scripts two matched multi-category charges (t1, t2) whose
@@ -65,9 +67,9 @@ func TestProcess_split400_siblingThenAutoSkipsSplitForLaterCharges(t *testing.T)
 	assert.Len(t, subs(t, sibling), 2)
 
 	assert.Equal(t, txnPath("t1"), reqs[2].Path)
-	assert.Equal(t, map[string]any{"flag_color": flagColor}, sent(t, reqs[2]), "flag only")
+	assert.Equal(t, map[string]any{"flag_color": flagColor, "memo": "[itemize:k1]"}, sent(t, reqs[2]), "flag plus marker")
 	assert.Equal(t, txnPath("t2"), reqs[4].Path)
-	assert.Equal(t, map[string]any{"flag_color": flagColor}, sent(t, reqs[4]))
+	assert.Equal(t, map[string]any{"flag_color": flagColor, "memo": "[itemize:k2]"}, sent(t, reqs[4]))
 	assert.Len(t, h.srv.Calls(http.MethodPut, txnPath("t2")), 1, "no split attempt after the switch-off")
 
 	for _, k := range []string{"k1", "k2"} {
@@ -133,29 +135,74 @@ func TestProcess_split200WithoutSubtransactions_restoresMemoThenSibling(t *testi
 			assert.True(t, hasSubtransactions(t, reqs[0]))
 			assert.Equal(t, map[string]any{"memo": origMemo}, sent(t, reqs[1]), "restore carries the original memo")
 			assert.Equal(t, http.MethodPost, reqs[2].Method)
-			assert.Equal(t, map[string]any{"flag_color": flagColor}, sent(t, reqs[3]))
+			assert.Equal(t, map[string]any{"flag_color": flagColor, "memo": memo.AppendMarker(origMemo, "k1")}, sent(t, reqs[3]))
 		})
 	}
 }
 
-func TestProcess_split200Mismatched_treatedAsIgnored(t *testing.T) {
+func TestProcess_split200Mismatched_restoresMemoReturnsErrorWithoutSibling(t *testing.T) {
 	h := newHarness(t)
 	orig := wm("t1", acctA, -50000, date(10, 5), withMemo("Costco run"))
 	job := multiJob("k1", 5000, date(10, 4), acctA)
-	wrong := job.Splits
-	wrong = append(wrong[:0:0], wrong...)
+	wrong := slices.Clone(job.Splits)
 	wrong[0].AmountMilli, wrong[1].AmountMilli = -30010, -19990
 	h.srv.On(http.MethodPut, txnPath("t1"),
-		okTxn(savedAs(orig, "Costco run [itemize:k1]", wrong)), okTxn(orig), okTxn(orig))
-	h.srv.On(http.MethodPost, createPath, okTxn(ynab.Transaction{ID: "sib-1"}))
+		okTxn(savedAs(orig, "Costco run [itemize:k1]", wrong)), okTxn(orig))
 
-	res, err := h.writer(t, []ynab.Transaction{orig}).Process(context.Background(), job)
+	_, err := h.writer(t, []ynab.Transaction{orig}).Process(context.Background(), job)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "t1")
+	assert.Contains(t, err.Error(), "differ")
+	reqs := h.srv.Requests()
+	require.Len(t, reqs, 2, "split PUT and memo restore only")
+	assert.Equal(t, map[string]any{"memo": "Costco run"}, sent(t, reqs[1]))
+	assert.Empty(t, h.srv.Calls(http.MethodPost, createPath), "no sibling next to an unverified split")
+	_, recorded := h.recorded(t, "k1")
+	assert.False(t, recorded)
+}
+
+func TestProcess_split200Mismatched_restoreFails_errorNamesBothProblems(t *testing.T) {
+	h := newHarness(t)
+	orig := wm("t1", acctA, -50000, date(10, 5), withMemo("Costco run"))
+	job := multiJob("k1", 5000, date(10, 4), acctA)
+	wrong := slices.Clone(job.Splits)
+	wrong[0].AmountMilli, wrong[1].AmountMilli = -30010, -19990
+	h.srv.On(http.MethodPut, txnPath("t1"), okTxn(savedAs(orig, "marked", wrong)), serverError())
+
+	_, err := h.writer(t, []ynab.Transaction{orig}).Process(context.Background(), job)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "t1")
+	assert.Contains(t, err.Error(), "[itemize:k1]")
+	assert.Empty(t, h.srv.Calls(http.MethodPost, createPath))
+}
+
+func TestProcess_flaggedOriginalCarriesMarker_noSecondSiblingWithoutDatabase(t *testing.T) {
+	h := newHarness(t)
+	orig := wm("t1", acctA, -50000, date(10, 5), withMemo("Costco run"))
+	job := multiJob("k1", 5000, date(10, 4), acctA)
+	h.srv.On(http.MethodPost, createPath, okTxn(ynab.Transaction{ID: "sib-1"}))
+	h.srv.On(http.MethodPut, txnPath("t1"), okTxn(orig))
+	_, err := h.writer(t, []ynab.Transaction{orig}, mode(ModeNever)).Process(context.Background(), job)
+	require.NoError(t, err)
+	flagPut := sent(t, h.req(t, 1))
+	h.srv.Reset()
+
+	// Fresh database (lost), YNAB state as the first run left it.
+	flagged := orig
+	flagged.FlagColor = flagColor
+	flagged.Memo = flagPut["memo"].(string)
+	sibling := wm("sib-1", acctA, -50000, date(10, 5), withMemo("[itemize:k1]"))
+	sibling.SubTransactions = []ynab.SubTransaction{{ID: "s1", Amount: -30000}, {ID: "s2", Amount: -20000}}
+	fresh := newHarness(t)
+
+	res, err := fresh.writer(t, []ynab.Transaction{flagged, sibling}, mode(ModeNever)).
+		Process(context.Background(), job)
 
 	require.NoError(t, err)
-	assert.Equal(t, NeedsManualMatch, res.Outcome)
-	reqs := h.srv.Requests()
-	require.Len(t, reqs, 4)
-	assert.Equal(t, map[string]any{"memo": "Costco run"}, sent(t, reqs[1]))
+	assert.NotEqual(t, NeedsManualMatch, res.Outcome)
+	assert.Empty(t, fresh.srv.Calls(http.MethodPost, createPath), "no second sibling")
 }
 
 func TestProcess_restoreFails_errorNamesTransaction_noSibling(t *testing.T) {

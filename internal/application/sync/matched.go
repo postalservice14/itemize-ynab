@@ -78,6 +78,8 @@ func (w *Writer) splitInPlace(ctx context.Context, job ChargeJob, orig ynab.Tran
 		res.TxnID = orig.ID
 		w.record(ctx, job, &res)
 		return res, nil
+	case err == nil && hasLiveSubtransactions(saved):
+		return res, w.splitMismatch(ctx, orig, saved, res.Key)
 	case err == nil:
 		// 200 but the split was not saved: the marker memo was, so undo it
 		// before anything else.
@@ -95,6 +97,31 @@ func (w *Writer) splitInPlace(ctx context.Context, job ChargeJob, orig ynab.Tran
 		return res, writeErr(res.Key, "split in place", orig.ID, err)
 	}
 	return w.sibling(ctx, job, orig, res)
+}
+
+// splitMismatch handles a 200 whose live subtransactions differ from the
+// request. The original now holds a split nobody verified, so no sibling is
+// created (the amount would be counted twice) and nothing is recorded; the
+// memo is restored and the error names the transaction for a manual fix.
+func (w *Writer) splitMismatch(ctx context.Context, orig, saved ynab.Transaction, key string) error {
+	w.log.Warn("split-in-place saved a different split than requested", "key", key, "txn_id", orig.ID)
+	w.splitFailed()
+	if err := w.restore(ctx, orig, saved); err != nil {
+		return fmt.Errorf("charge %s: YNAB saved subtransactions that differ from the request on transaction %s "+
+			"and restoring it failed; its memo now carries the marker %s, which hides it from matching - fix it by hand: %w",
+			key, orig.ID, memo.Marker(key), err)
+	}
+	return fmt.Errorf("charge %s: YNAB saved subtransactions that differ from the request on transaction %s; "+
+		"its memo was restored and no sibling was created - check its split by hand", key, orig.ID)
+}
+
+func hasLiveSubtransactions(saved ynab.Transaction) bool {
+	for _, s := range saved.SubTransactions {
+		if !s.Deleted {
+			return true
+		}
+	}
+	return false
 }
 
 // restore puts back the original memo (and the category, if the ignored

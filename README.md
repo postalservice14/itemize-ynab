@@ -416,9 +416,10 @@ split that does not sum exactly to its parent; the check is local, before sendin
 Idempotency has two layers: the SQLite record of each processed charge, and the
 `[itemize:...]` marker in the memo. A charge is recorded only after the YNAB
 write succeeded. If recording fails, the marker still prevents a duplicate for a
-categorized, split or staged charge. A sibling is the exception: the flagged
-original carries no marker, so the row's note says the sibling exists, that a
-rerun will create a second sibling, and that one must be deleted by hand.
+categorized, split or staged charge. A sibling's flagged original
+gets the marker in its memo too, so it is hidden from matching even without the
+database row. The one exception is a sibling POST that timed out after YNAB
+applied it: the original is then unmarked and a rerun creates a second sibling.
 
 Known gaps:
 
@@ -438,9 +439,9 @@ Known gaps:
   while no run is active.
 - Deleting the database is mostly safe: markers keep categorized, split and
   staged charges from being written again, and the transaction cache is rebuilt
-  with one full YNAB fetch. The exception is `needs_manual_match`: the flagged
-  original carries no marker, so a rerun matches it again and creates a second
-  sibling and flag. Do not delete the database while unresolved siblings exist.
+  with one full YNAB fetch. The flagged original of a `needs_manual_match` carries the
+  marker too, so it is not matched again. Only a sibling POST that timed out
+  after YNAB applied it can still lead to a second sibling.
 - Rate limits: YNAB allows 200 requests per hour per token. A run typically
   makes 3 YNAB reads (categories; accounts when accounts are mapped; one
   transactions list) plus typically 1 or 2 writes per charge (a sibling is 2:
