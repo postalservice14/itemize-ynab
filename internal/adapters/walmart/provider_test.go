@@ -190,6 +190,28 @@ func TestProvider_Orders_paginatesAndFilters(t *testing.T) {
 	assert.Equal(t, since.Unix(), *f.historyReqs[0].MinTimestamp)
 }
 
+func TestProvider_Orders_listsEachOrderOnce(t *testing.T) {
+	// History lists a multi-shipment order once per group, across pages too;
+	// the order detail and ledger cover the whole order, so one ref is enough.
+	pages := map[string]*wm.PurchaseHistoryResponse{
+		"": historyPage("c2",
+			wm.OrderSummary{OrderID: "A", GroupID: "GA1"},
+			wm.OrderSummary{OrderID: "B", GroupID: "GB"},
+			wm.OrderSummary{OrderID: "A", GroupID: "GA2"}),
+		"c2": historyPage("", wm.OrderSummary{OrderID: "A", GroupID: "GA3"}),
+	}
+	f := &fakeClient{history: func(_ context.Context, r wm.PurchaseHistoryRequest) (*wm.PurchaseHistoryResponse, error) {
+		return pages[r.Cursor], nil
+	}}
+	refs, err := newTestProvider(f).Orders(context.Background(), time.Time{})
+	require.NoError(t, err)
+
+	require.Len(t, refs, 2)
+	assert.Equal(t, "A", refs[0].ID)
+	assert.Equal(t, encodeToken("GA1", false), refs[0].Token, "the first group wins")
+	assert.Equal(t, "B", refs[1].ID)
+}
+
 func TestProvider_Orders_errorsAndLimits(t *testing.T) {
 	f := &fakeClient{history: func(context.Context, wm.PurchaseHistoryRequest) (*wm.PurchaseHistoryResponse, error) {
 		return nil, fmt.Errorf("failed on page 1: %w", errors.New("access denied - cookies expired"))

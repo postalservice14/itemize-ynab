@@ -60,10 +60,13 @@ func New(client Client, opts ...Option) *Provider {
 // Orders lists orders from purchase history, following pagination. since is
 // sent as the history MinTimestamp (the client's filtering is unverified), and
 // summaries whose delivered date parses and falls before since are dropped as
-// a second line of defense. Summaries without an order ID are ignored.
+// a second line of defense. Summaries without an order ID are ignored. History
+// lists a multi-shipment order once per group, but the detail and ledger cover
+// the whole order, so each order ID is returned once, with its first group.
 func (p *Provider) Orders(ctx context.Context, since time.Time) ([]order.OrderRef, error) {
 	var (
 		refs   []order.OrderRef
+		seen   = map[string]bool{}
 		cursor string
 		minDay = order.DateOnly(since)
 	)
@@ -82,9 +85,10 @@ func (p *Provider) Orders(ctx context.Context, since time.Time) ([]order.OrderRe
 		}
 		hist := resp.Data.OrderHistoryV2
 		for _, s := range hist.OrderGroups {
-			if s.OrderID == "" || summaryTooOld(s, minDay) {
+			if s.OrderID == "" || seen[s.OrderID] || summaryTooOld(s, minDay) {
 				continue
 			}
+			seen[s.OrderID] = true
 			refs = append(refs, order.OrderRef{ID: s.OrderID, Token: encodeToken(s.GroupID, s.Type == inStoreType)})
 		}
 		cursor = hist.PageInfo.NextPageCursor
