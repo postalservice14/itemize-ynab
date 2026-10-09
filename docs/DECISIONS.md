@@ -37,6 +37,7 @@ call from John are collected under "Open decisions for John" near the end.
 ## Walmart blocks all exit 3, including a stale session
 
 - `docs/ARCHITECTURE.md` originally proposed exit 1 for stale cookies. As built, a bot challenge (456), a stale session (403/418) and a Walmart 429 all become a blocked-session stop: the run ends early with the partial summary and exit code 3, so a scheduled job has one signal ("refresh the cookies") instead of two. A missing or empty cookie store at startup is still exit 1.
+- Seen live on 2026-10-09: a purchase-history request minutes after a successful dry run came back as HTTP 412 with a PerimeterX `/blocked` redirect in the body (the client only knows 456). The adapter now treats a 412 whose body holds that redirect as a bot challenge too, so the run stops with exit 3. A plain 412 without the redirect is still an ordinary failure.
 
 ## YNAB reads per run
 

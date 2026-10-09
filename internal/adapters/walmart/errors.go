@@ -27,8 +27,10 @@ const maxErrText = 200
 //	403/418: "access denied - cookies expired, ..." / "access denied (cookies might be stale) ..."
 //	429:     "rate limited - cookies might be stale, ..." / "after N retries: rate limited (attempt a/b)"
 //
-// Errors that embed a response body ("HTTP N: <body>") are never string
-// matched, so a body that happens to say "rate limited" cannot stop a run.
+// The one exception is the live PerimeterX block (HTTP 412 with a /blocked
+// redirect in the body, see isPerimeterXBlock). Every other error that embeds
+// a response body ("HTTP N: <body>") is never string matched, so a body that
+// happens to say "rate limited" cannot stop a run.
 func classifyError(err error) (order.BlockedKind, bool) {
 	if err == nil {
 		return 0, false
@@ -37,6 +39,9 @@ func classifyError(err error) (order.BlockedKind, bool) {
 		return order.BotChallenge, true
 	}
 	msg := err.Error()
+	if isPerimeterXBlock(msg) {
+		return order.BotChallenge, true
+	}
 	if strings.Contains(msg, "HTTP ") {
 		return 0, false
 	}
@@ -47,6 +52,14 @@ func classifyError(err error) (order.BlockedKind, bool) {
 		return order.RateLimited, true
 	}
 	return 0, false
+}
+
+// isPerimeterXBlock reports Walmart's bot protection answering HTTP 412 with a
+// redirect to /blocked. The client only knows the 456 form, so this live
+// variant would otherwise surface as an ordinary failure instead of stopping
+// the run. Both markers are required, so a plain 412 is not a block.
+func isPerimeterXBlock(msg string) bool {
+	return strings.Contains(msg, "HTTP 412:") && strings.Contains(msg, `"redirectUrl":"/blocked`)
 }
 
 // wrapError turns a client error into our error. A blocked session becomes an
