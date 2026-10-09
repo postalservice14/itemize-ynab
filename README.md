@@ -3,8 +3,11 @@
 A personal command-line tool that splits Walmart card charges in YNAB by item
 category. It reads your Walmart orders (and the card charges Walmart actually
 made for them), asks an LLM to put each item in one of your YNAB categories,
-finds the matching YNAB transaction, and categorizes or splits it, spreading tax,
-fees and tip in proportion to each category's item subtotal. Runs are repeatable:
+finds the matching YNAB transaction, and categorizes or splits it. Each category
+gets its share of what the order was charged (tax, fees and tip spread in
+proportion to its item subtotal), and when Walmart charges an order in pieces
+each piece is filled with as few categories as possible (section "How an
+order's charges are split" below). Runs are repeatable:
 a charge already processed is guarded against a second write by its record in
 the local database and by a marker in the transaction's memo. The known gaps (a
 lost database while `needs_manual_match` siblings are unresolved, a write that
@@ -58,6 +61,7 @@ unless your plan has a category named "Pets": change or remove it.
 | `ynab.flag_color` | `purple` | Flag for anything that needs a human. One of red, orange, yellow, green, blue, purple. |
 | `ynab.accounts` | none | Map of card last 4 digits (quoted) to a YNAB account ID. Enables pre-staging and restricts matching to that account. |
 | `ynab.category_overrides` | none | Map of categorizer output name to an existing YNAB category name, applied after categorization. |
+| `ynab.tip_category` | none | YNAB category for a driver tip that Walmart charges on its own. Unset, the tip is split in proportion to the items' categories. Must be an eligible category. |
 | `ynab.match_window.days_before` | 2 | How many days before the charge date a YNAB transaction may sit. |
 | `ynab.match_window.days_after` | 10 | How many days after. |
 | `ynab.split_in_place` | `auto` | `auto`, `always` or `never`; see below. |
@@ -111,6 +115,31 @@ The categorizer is never offered them, `ynab categories -eligible` and the
 `probe-split` default leave them out, and a `category_overrides` target that is
 excluded is rejected. Every entry must name a category in the plan: a misspelled
 entry fails the live check instead of silently excluding nothing.
+
+### How an order's charges are split
+
+Walmart often charges one order in several pieces (a delivery can come through
+as six charges plus the driver tip a day later), and it does not say which items
+each piece paid for. So the tool splits the order, not each piece on its own:
+
+- Each category's total over the order's charges is its share by item subtotal,
+  so tax, fees and tip are spread proportionally and your category totals for the
+  order are exact.
+- The pieces are then filled from those totals, largest piece first and largest
+  category first. Most small pieces end up in one category. Which category a
+  given piece gets is a bookkeeping choice, not a fact about what it paid for.
+- A charge that is exactly the order's driver tip (only when one charge equals
+  the tip and the other charges add up to the order total) is split on its own,
+  in proportion to the items' categories, and the other charges are filled as
+  above; each category's order total still includes its share of the tip, to
+  within a cent. With `ynab.tip_category` set, the tip charge goes to that
+  category instead, with the memo "Driver tip".
+
+The plan covers every charge of the order, written or not, so later runs give
+the same answer as long as Walmart's charges and the item categories do not
+change. A charge Walmart adds later (an adjustment, or a tip that is not
+recognized as one) changes the plan for the charges still to be written, and
+the order's category totals can then be off by that charge's share.
 
 ### Environment variables
 

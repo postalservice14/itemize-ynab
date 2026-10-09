@@ -131,6 +131,16 @@ call from John are collected under "Open decisions for John" near the end.
 - Writing: the transaction is split (or categorized) by the categories for the summed amount, exactly like a single match; the memo marker uses the first member's key, and every member charge is recorded with that transaction ID and outcome, so a rerun reports each one as `already_processed`. Each summary row keeps its own charge's share and notes that it was paid together with the others.
 - Pre-staging: a charge from an order with more than one card charge is never pre-staged (`skipped`, not recorded, retried next run). Single-charge orders are pre-staged as before.
 
+## Splitting an order charged in pieces
+
+- Seen live on 2026-10-09: one grocery delivery ($118.63 of items, tax and a fee, plus a $7.51 driver tip) was charged as seven ledger entries: six pieces summing to exactly $118.63, all at one timestamp, and the tip a day later. The order had a single fulfillment group, the ledger rows carry only an amount and a time, and no consistent tax-rate grouping of the items explains the pieces (every exact partition needs five or more rates). Which items a piece paid for is not knowable from Walmart's data.
+- Before: each charge was split on its own by the whole order's category mix, so an $8.39 piece showed $2.40 of camp chairs. Category totals per order were right; each transaction's split was not believable.
+- Built behavior (John chose this over keeping the proportional split): `splitter.BuildOrderSplits` gives each category its proportional share of the sum of the order's charges (largest remainder), then fills the charges from those totals, largest charge first and largest category first, ties in input order. Category totals per order stay exact to the cent; most small charges get one category. A charge's split memo is still the item names of its categories. One charge gives exactly what `BuildSplits` gives.
+- The plan always covers every charge of the order, recorded or not, so reruns and charges written in different runs agree. It changes only if Walmart's charges or the item categories change between runs; then charges written earlier keep their old split.
+- Tip: `order.TipCharge` recognizes the tip charge only when the order has a tip, exactly one charge equals it, and the other charges sum to the item subtotals plus tax and fees. That charge is left out of the fill and split on its own in proportion to the items' categories (John's choice: a tip spread over what was delivered, not a one-category tip that looks like cat food); category totals per order then match a one-shot proportional split to within a cent per category. With `ynab.tip_category` set (optional, an eligible category, checked at startup) it goes to that category with the memo "Driver tip" instead. When the check fails, the tip is filled like any other charge.
+- A combined bank transaction ("Charges the bank posts together") gets its members' planned splits merged by category.
+- Transactions written before this change keep their proportional splits; re-splitting them is a separate decision.
+
 ## Fallback shape and approval of tool-created transactions
 
 - Status: settled 2026-10-09 (were open decisions 3 and 5). Both keep the defaults the code already had.

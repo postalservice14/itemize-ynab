@@ -116,7 +116,7 @@ func newOrchHarness(t *testing.T) *orchHarness {
 		harness: newHarness(t),
 		cat: &fakeCategorizer{byItem: map[string]string{
 			"Milk": "Groceries", "Bread": "groceries", "Apples": "Groceries",
-			"Towels": "Household", "Soap": "Household",
+			"Towels": "Household", "Soap": "Household", "Kibble": "Pets",
 		}},
 		cfg: config.Config{YNAB: config.YNAB{
 			Token: testToken, PlanID: plan, FlagColor: flagColor, SplitInPlace: "auto",
@@ -211,12 +211,13 @@ func orderA() (order.Order, ynab.Transaction) {
 	return o, wm("tA", acctA, -5000, date(10, 5))
 }
 
-// orderB is a 60/40 two-category order paid by two charges whose sum ($105.00)
-// is not the item total ($100.00): splits must come from each CHARGE.
+// orderB is a 60/30/10 three-category order paid by two charges whose sum
+// ($105.00) is not the item total ($100.00). Each category gets its share of
+// the charges' sum (63.00/31.50/10.50), filled into the charges largest first.
 func orderB() (order.Order, []ynab.Transaction) {
 	o := order.Order{
 		ID: "oB", DisplayID: "B-200", Date: date(10, 6), TaxCents: 500,
-		Items: []order.Item{item("Towels", 6000), item("Apples", 4000)},
+		Items: []order.Item{item("Towels", 6000), item("Apples", 3000), item("Kibble", 1000)},
 		Charges: []order.Charge{
 			charge("oB", 7350, 1, date(10, 6)),
 			charge("oB", 3150, 1, date(10, 7)),
@@ -229,8 +230,8 @@ func orderB() (order.Order, []ynab.Transaction) {
 }
 
 var (
-	splitsB1 = []splitter.Split{sp(catHome, -44100, "Towels"), sp(catGroc, -29400, "Apples")}
-	splitsB2 = []splitter.Split{sp(catHome, -18900, "Towels"), sp(catGroc, -12600, "Apples")}
+	splitsB1 = []splitter.Split{sp(catHome, -63000, "Towels"), sp(catGroc, -10500, "Apples")}
+	splitsB2 = []splitter.Split{sp(catGroc, -21000, "Apples"), sp(catPets, -10500, "Kibble")}
 )
 
 // happy scripts orders A and B, their transactions and accepting PUTs.

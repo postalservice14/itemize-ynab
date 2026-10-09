@@ -141,7 +141,7 @@ func (r *run) processOrder(ctx context.Context, o order.Order) (bool, error) {
 		}
 		return false, nil
 	}
-	return r.processCharges(ctx, display, o.Charges, items, slots)
+	return r.processCharges(ctx, display, o, items, slots)
 }
 
 // failPending applies a transactions-load error to every charge still

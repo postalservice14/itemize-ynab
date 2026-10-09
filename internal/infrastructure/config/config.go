@@ -57,6 +57,7 @@ type YNAB struct {
 	Accounts          map[string]string // card last 4 -> YNAB account ID
 	CategoryOverrides map[string]string // categorizer name -> YNAB category name
 	ExcludeCategories []string          // YNAB category names the categorizer may never use
+	TipCategory       string            // YNAB category for a separately charged tip; "" spreads it
 	MatchWindow       MatchWindow
 	SplitInPlace      string // auto | always | never
 }
@@ -101,6 +102,7 @@ type rawYNAB struct {
 	Accounts          map[string]string `yaml:"accounts"`
 	CategoryOverrides map[string]string `yaml:"category_overrides"`
 	ExcludeCategories []string          `yaml:"exclude_categories"`
+	TipCategory       string            `yaml:"tip_category"`
 	MatchWindow       struct {
 		DaysBefore *int `yaml:"days_before"`
 		DaysAfter  *int `yaml:"days_after"`
@@ -159,6 +161,7 @@ func parse(data []byte, lookup func(string) (string, bool), res *pathResolver) (
 		Accounts:          exp.expandMap(raw.Accounts),
 		CategoryOverrides: exp.expandMap(raw.CategoryOverrides),
 		ExcludeCategories: raw.ExcludeCategories,
+		TipCategory:       strings.TrimSpace(exp.expand(raw.TipCategory)),
 		SplitInPlace:      exp.expand(raw.SplitInPlace),
 		MatchWindow: MatchWindow{
 			DaysBefore: intOr(raw.MatchWindow.DaysBefore, defaultDaysBefore),

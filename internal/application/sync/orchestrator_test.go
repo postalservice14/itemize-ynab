@@ -26,8 +26,8 @@ func TestRunOrchestrator_happyPath_rowsCallsSplitsAndPacing(t *testing.T) {
 		Splits: []SplitView{{Category: "Groceries", CategoryID: catGroc, AmountCents: 500}},
 	}, sum.Rows[0])
 	assert.Equal(t, []SplitView{
-		{Category: "Household", CategoryID: catHome, AmountCents: 4410},
-		{Category: "Groceries", CategoryID: catGroc, AmountCents: 2940},
+		{Category: "Household", CategoryID: catHome, AmountCents: 6300},
+		{Category: "Groceries", CategoryID: catGroc, AmountCents: 1050},
 	}, sum.Rows[1].Splits)
 	assert.Equal(t, "B-200", sum.Rows[2].OrderDisplayID)
 	assert.Equal(t, int64(3150), sum.Rows[2].AmountCents)
@@ -47,14 +47,15 @@ func TestRunOrchestrator_happyPath_rowsCallsSplitsAndPacing(t *testing.T) {
 
 	// The categorizer runs once per order, with only eligible category names.
 	require.Len(t, h.cat.calls, 2)
-	assert.Equal(t, []string{"Towels", "Apples"}, h.cat.calls[1])
+	assert.Equal(t, []string{"Towels", "Apples", "Kibble"}, h.cat.calls[1])
 	assert.Equal(t, []string{"Groceries", "Household", "Pets"}, h.cat.allowed[0], "no overrides: YNAB names only")
 
-	// Splits come from each CHARGE amount, not the order total.
+	// Splits come from the CHARGES' sum, not the order total, filled largest
+	// charge first.
 	assert.Equal(t, catGroc, sent(t, h.srv.Calls(http.MethodPut, txnPath("tA"))[0])["category_id"])
-	assert.Equal(t, [][2]any{{catHome, -44100.0}, {catGroc, -29400.0}},
+	assert.Equal(t, [][2]any{{catHome, -63000.0}, {catGroc, -10500.0}},
 		subAmounts(t, h.srv.Calls(http.MethodPut, txnPath("tB1"))[0]))
-	assert.Equal(t, [][2]any{{catHome, -18900.0}, {catGroc, -12600.0}},
+	assert.Equal(t, [][2]any{{catGroc, -21000.0}, {catPets, -10500.0}},
 		subAmounts(t, h.srv.Calls(http.MethodPut, txnPath("tB2"))[0]))
 
 	// Pacing: 2s between fetches, none before the first.

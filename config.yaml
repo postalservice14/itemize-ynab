@@ -21,6 +21,8 @@ ynab:
                                 # (case-insensitive, any group). Every entry must
                                 # exist in the plan, so a typo fails the live check.
     - "Mortgage"
+  # tip_category: "Delivery"    # optional: a driver tip charged on its own goes
+                                # here instead of being split with the items.
   match_window:
     days_before: 2
     days_after: 10

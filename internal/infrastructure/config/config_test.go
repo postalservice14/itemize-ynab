@@ -385,3 +385,29 @@ func TestLoadCookieFile_readsFileWithoutTheToken(t *testing.T) {
 	_, err = config.LoadCookieFile(filepath.Join(dir, "missing.yaml"))
 	require.ErrorIs(t, err, config.ErrInvalid)
 }
+
+func TestParse_tipCategory(t *testing.T) {
+	cfg, err := config.Parse([]byte("ynab:\n  token: a\n  tip_category: \"${TIP}\"\n"), env(map[string]string{"TIP": "Delivery"}))
+
+	require.NoError(t, err)
+	assert.Equal(t, "Delivery", cfg.YNAB.TipCategory)
+}
+
+func TestCrossCheck_tipCategoryMustBeUsable(t *testing.T) {
+	cfg, err := config.Parse([]byte("ynab:\n  token: a\n  tip_category: Tips\n"), env(nil))
+	require.NoError(t, err)
+	notFound := func(name string) error { return fmt.Errorf("category %q not found", name) }
+
+	err = cfg.YNAB.CrossCheck(notFound, func(string) bool { return true }, func(string) bool { return true })
+
+	require.ErrorIs(t, err, config.ErrInvalid)
+	assert.Contains(t, err.Error(), `ynab.tip_category "Tips"`)
+}
+
+func TestCrossCheck_noTipCategoryIsFine(t *testing.T) {
+	cfg, err := config.Parse([]byte("ynab:\n  token: a\n"), env(nil))
+	require.NoError(t, err)
+	notFound := func(name string) error { return fmt.Errorf("category %q not found", name) }
+
+	assert.NoError(t, cfg.YNAB.CrossCheck(notFound, func(string) bool { return true }, func(string) bool { return true }))
+}

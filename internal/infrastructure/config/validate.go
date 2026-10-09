@@ -73,7 +73,7 @@ func (c *Config) Validate() error {
 // CrossCheck verifies the config against live YNAB data fetched by the caller:
 // findCategory must return nil when the named category is usable (exists among
 // the eligible categories and is unambiguous) and otherwise an error saying
-// why; categoryKnown reports whether a name matches any category in the plan
+// why (it checks override targets and tip_category); categoryKnown reports whether a name matches any category in the plan
 // (so a misspelled exclude_categories entry cannot silently exclude nothing);
 // accountExists reports whether an account ID is in the plan. Every bad
 // exclusion, override and account is listed in one error.
@@ -88,6 +88,11 @@ func (y YNAB) CrossCheck(findCategory func(name string) error, categoryKnown fun
 		to := y.CategoryOverrides[from]
 		if err := findCategory(to); err != nil {
 			p = append(p, fmt.Sprintf("ynab.category_overrides[%q] -> %q: %v", from, to, err))
+		}
+	}
+	if y.TipCategory != "" {
+		if err := findCategory(y.TipCategory); err != nil {
+			p = append(p, fmt.Sprintf("ynab.tip_category %q: %v", y.TipCategory, err))
 		}
 	}
 	for _, card := range sortedKeys(y.Accounts) {

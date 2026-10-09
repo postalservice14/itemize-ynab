@@ -1,17 +1,19 @@
 // Package splitter turns a Walmart charge and its categorized items into YNAB
 // split amounts.
 //
-// The caller passes the CHARGE amount (what the card was actually billed),
-// not the order total. That amount already includes tax, fees and tip, so
-// spreading it in proportion to each category's item subtotal IS the
-// proportional distribution of tax/fees/tip: a category holding 60% of the
-// item subtotal absorbs 60% of the charge.
+// The caller passes CHARGE amounts (what the card was actually billed), not
+// the order total. They already include tax, fees and tip, so spreading them
+// in proportion to each category's item subtotal IS the proportional
+// distribution of tax/fees/tip: a category holding 60% of the item subtotal
+// absorbs 60% of the charges. BuildSplits does this for one charge;
+// BuildOrderSplits does it for all of an order's charges at once and then
+// fills each charge from the category totals.
 //
 // Allocation happens in integer cents (largest-remainder, via the allocator
 // package) and only then converts to YNAB milliunits (1 cent = 10 milliunits).
 //
 // If every item subtotal is zero there is nothing to weigh categories by, so
-// BuildSplits returns ErrNoPositiveSubtotal rather than quietly spreading
+// the builders return ErrNoPositiveSubtotal rather than quietly spreading
 // evenly or choosing a default category: an item-level outcome must never be
 // invented without saying so.
 package splitter
@@ -19,7 +21,6 @@ package splitter
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/postalservice14/itemize-ynab/internal/domain/allocator"
@@ -182,12 +183,7 @@ func allocate(chargeCents int64, groups []*group) ([]Split, error) {
 			Memo:        memo.Truncate(strings.Join(g.names, ", "), memo.MaxLen),
 		})
 	}
-	sort.SliceStable(splits, func(a, b int) bool {
-		if splits[a].AmountMilli != splits[b].AmountMilli {
-			return splits[a].AmountMilli < splits[b].AmountMilli // more negative = larger
-		}
-		return splits[a].CategoryID < splits[b].CategoryID
-	})
+	sortSplits(splits)
 	return splits, nil
 }
 
