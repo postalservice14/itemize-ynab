@@ -53,6 +53,8 @@ func (w *Writer) stageBlocker(job ChargeJob) string {
 		return "charge date is in the future"
 	case age >= time.Duration(w.cfg.StageMaxAgeDays)*oneDay:
 		return "charge is too old to pre-stage"
+	case job.OrderCharges > 1:
+		return "the order has several charges, which the bank may post as one amount; waiting for the bank transaction"
 	case w.windowBeforeLoaded(charged):
 		return "charge date window starts before the loaded transaction range; widen -days or re-run"
 	case matcher.HasAmountInAccount(w.matcherCharge(job), w.txns, w.cfg.MatchOptions):

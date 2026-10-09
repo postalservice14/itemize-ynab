@@ -11,6 +11,7 @@ import (
 
 	"github.com/postalservice14/itemize-ynab/internal/adapters/ynab"
 	"github.com/postalservice14/itemize-ynab/internal/domain/matcher"
+	"github.com/postalservice14/itemize-ynab/internal/domain/order"
 	"github.com/postalservice14/itemize-ynab/internal/infrastructure/storage"
 )
 
@@ -192,29 +193,40 @@ func (w *Writer) matcherCharge(job ChargeJob) matcher.Charge {
 	}
 }
 
-// record stores a finished outcome after a successful write. A failure is
-// only reported: for a transaction that carries the memo marker, the marker
-// still keeps it out of matching. A sibling split is different: the original
-// it stands in for carries no marker, so a rerun creates a second sibling.
+// record stores a finished outcome after a successful write, once per charge
+// the job stands for. A failure is only reported: for a transaction that
+// carries the memo marker, the marker still keeps it out of matching. A
+// sibling split is different: the original it stands in for carries no
+// marker, so a rerun creates a second sibling.
 func (w *Writer) record(ctx context.Context, job ChargeJob, res *Result) {
-	err := w.store.RecordCharge(ctx, storage.ChargeRecord{
-		Key:       job.Charge.Key,
-		OrderID:   job.Charge.OrderID,
-		YNABTxnID: res.TxnID,
-		Outcome:   string(res.Outcome),
-		CreatedAt: w.cfg.Now(),
-	})
+	charges := job.Members
+	if len(charges) == 0 {
+		charges = []order.Charge{job.Charge}
+	}
+	for _, c := range charges {
+		err := w.store.RecordCharge(ctx, storage.ChargeRecord{
+			Key:       c.Key,
+			OrderID:   c.OrderID,
+			YNABTxnID: res.TxnID,
+			Outcome:   string(res.Outcome),
+			CreatedAt: w.cfg.Now(),
+		})
+		w.logRecord(c.Key, err, res)
+	}
+}
+
+func (w *Writer) logRecord(key string, err error, res *Result) {
 	switch {
 	case err == nil:
-		w.log.Info("charge written", "key", res.Key, "outcome", res.Outcome, "txn_id", res.TxnID)
+		w.log.Info("charge written", "key", key, "outcome", res.Outcome, "txn_id", res.TxnID)
 	case res.Outcome == NeedsManualMatch:
 		w.log.Warn("sibling split created but not recorded locally; a rerun will create a second sibling, delete one by hand",
-			"key", res.Key, "sibling_id", res.TxnID, "error", err)
+			"key", key, "sibling_id", res.TxnID, "error", err)
 		res.Note = joinNotes(res.Note, fmt.Sprintf("sibling %s exists in YNAB but was not recorded locally: "+
 			"a rerun will create a second sibling, so delete one of them by hand (%v)", res.TxnID, err))
 	default:
 		w.log.Warn("charge written to YNAB but not recorded locally; the memo marker still prevents a duplicate",
-			"key", res.Key, "txn_id", res.TxnID, "error", err)
+			"key", key, "txn_id", res.TxnID, "error", err)
 		res.Note = joinNotes(res.Note, "not recorded locally: "+err.Error())
 	}
 }

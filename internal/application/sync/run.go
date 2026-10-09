@@ -133,19 +133,15 @@ func (r *run) processOrder(ctx context.Context, o order.Order) (bool, error) {
 	if catErr != nil && ctx.Err() != nil {
 		return true, interrupted(ctx.Err())
 	}
-	for i, c := range o.Charges {
-		if slots[i].done {
-			continue
+	if catErr != nil {
+		for i := range slots {
+			if !slots[i].done {
+				slots[i].fail(catErr)
+			}
 		}
-		if catErr != nil {
-			slots[i].fail(catErr)
-			continue
-		}
-		if stop, err := r.processCharge(ctx, display, c, items, &slots[i]); stop || err != nil {
-			return stop, err
-		}
+		return false, nil
 	}
-	return false, nil
+	return r.processCharges(ctx, display, o.Charges, items, slots)
 }
 
 // failPending applies a transactions-load error to every charge still
@@ -191,31 +187,6 @@ func (r *run) categorize(ctx context.Context, o order.Order) ([]splitter.Item, e
 		return nil, fmt.Errorf("categorize items: %w", err)
 	}
 	return items, nil
-}
-
-// processCharge builds one charge's splits and writes it. stop means end the
-// run (rate limit or cancellation).
-func (r *run) processCharge(ctx context.Context, display string, c order.Charge, items []splitter.Item, s *slot) (bool, error) {
-	splits, err := splitter.BuildSplits(c.AmountCents, items, r.cat.resolve)
-	if err != nil {
-		s.fail(r.splitError(err))
-		return false, nil
-	}
-	s.row.Splits = r.views(splits)
-	w, err := r.writerFor(ctx)
-	if err != nil {
-		return r.chargeError(ctx, err, s)
-	}
-	acct, _ := order.ResolveAccount(c.LastFour, r.o.d.Config.YNAB.Accounts)
-	r.o.log.Debug("writing charge", "key", c.Key, "amount_cents", c.AmountCents, "splits", len(splits))
-	res, err := w.Process(ctx, ChargeJob{Charge: c, OrderDisplayID: display, AccountID: acct, Splits: splits})
-	if res.Outcome != "" {
-		s.set(Status(res.Outcome), res.TxnID, res.Note)
-	}
-	if err != nil {
-		return r.chargeError(ctx, err, s)
-	}
-	return false, nil
 }
 
 // chargeError turns a writer or transactions error into a stop or a Failed

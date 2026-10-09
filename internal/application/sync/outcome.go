@@ -62,6 +62,13 @@ type ChargeJob struct {
 	// Splits are negative milliunit amounts summing exactly to
 	// -Charge.AmountCents*10.
 	Splits []splitter.Split
+	// OrderCharges is how many card charges the order has. Above one the
+	// charge is never pre-staged: the bank may post several of them as one
+	// amount, which a staged transaction can never merge with.
+	OrderCharges int
+	// Members are the charges a combined job stands for (see CombineJobs);
+	// nil for a single charge.
+	Members []order.Charge
 }
 
 // Result is the outcome of one charge.

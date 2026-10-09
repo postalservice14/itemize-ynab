@@ -283,10 +283,15 @@ produces two rows.
 | `categorized` | The matched transaction had items in one category: its category was set and the marker appended to its memo (existing memo text is kept). |
 | `split_in_place` | The matched transaction was turned into a split and YNAB's reply was checked to hold exactly that split. |
 | `needs_manual_match` | A flagged, unapproved, user-entered split (payee Walmart, same account, date and amount, marker memo) was created next to the matched transaction, and the original was flagged. Until you resolve it the outflow appears twice. You merge or delete by hand in YNAB; the tool never does. Reached with `split_in_place: never`, or after a rejected in-place split. |
-| `staged_for_import` | No matching transaction yet, so an unapproved user-entered transaction was created in the mapped account, to be merged when the bank import arrives. |
+| `staged_for_import` | No matching transaction yet, so an unapproved user-entered transaction was created in the mapped account, to be merged when the bank import arrives. Only for orders with a single card charge. |
 | `skipped` | Nothing written, nothing recorded, so the charge is retried next run. See reasons below. |
 | `already_processed` | The database already has this charge. Nothing written, no LLM call. |
 | `failed` | The charge or order could not be processed. Any failed row makes the exit code 2. |
+
+When the bank posts several of an order's charges as one amount, that one
+transaction is matched to all of them and split by their combined categories.
+Each of those rows notes `paid together with N other charge(s) by one $X
+transaction` and shows the same YNAB transaction ID.
 
 `skipped` reasons you will see in the NOTE column:
 
@@ -295,9 +300,11 @@ produces two rows.
 - `ambiguous match: candidates ... tie across accounts`.
 - `no matching transaction; not pre-staged: <reason>`, where the reason is: no
   account mapping for the card; no usable date for the charge; charge date is in
-  the future; charge is too old to pre-stage (10 days or more, fixed); charge
-  date window starts before the loaded transaction range (widen `-days` or
-  re-run); or a transaction with the same amount already exists in the account.
+  the future; charge is too old to pre-stage (10 days or more, fixed); the
+  order has several charges, which the bank may post as one amount (waiting for
+  the bank transaction); charge date window starts before the loaded transaction
+  range (widen `-days` or re-run); or a transaction with the same amount already
+  exists in the account.
 - `not forced: sibling split ... already exists` (a refused `-force`).
 
 `failed` reasons: an order that could not be fetched, a categorization failure
