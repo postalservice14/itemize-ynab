@@ -112,7 +112,7 @@ call from John are collected under "Open decisions for John" near the end.
 
 - Status: settled (was open decision 8). On 2026-10-09 a dry run and then a real run, both with `-days 90`, exercised the whole pipeline against live YNAB, Walmart and Anthropic. The `claude-haiku-5-5` default returned a valid single-category answer in about 2 seconds with no `max_tokens` problem, so it stays the default.
 - The real run matched the one delivery order in the window to its YNAB transaction (same amount, YNAB date 3 days after the Walmart charge date) and wrote outcome `categorized`. Read back from YNAB: category Misc, memo = the item name plus the `[itemize:...]` marker (the memo was empty, so the item name is the base), still cleared, no flag, no subtransactions. The tool never sends `approved` for a matched transaction, so the approval state is whatever it was before.
-- The 90-day window returned only that one order. Several smaller Walmart charges in YNAB over the same weeks were not returned, which suggests in-store purchases are absent from the purchase history the adapter reads. Not yet investigated.
+- The 90-day window returned only that one order. The other Walmart charges in YNAB over the same weeks are purchases made on a different Walmart account (John's spouse), so they are correctly absent from this account's purchase history. The tool is per Walmart account: one cookie store, one order history. Covering a second account would need a second cookie store and run, which is not built.
 - The exclude-list work came from this run: without `ynab.exclude_categories` the eligible set included income, bill and savings categories.
 
 ## Open decisions for John
