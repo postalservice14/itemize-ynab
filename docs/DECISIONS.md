@@ -15,7 +15,7 @@ call from John are collected under "Open decisions for John" near the end.
 - The PRD says "the ledger does not provide a date for each charge, so the order date stands in for it". That is wrong for walmart-client-go v2.2.1: `PaymentMethodCharges.ChargedDates` is parallel to `FinalCharges` and holds a per-charge date and time.
 - Built behavior: matching anchors on the charge's own date. The order date is a fallback only when the ledger date is missing, zero or unparseable (or the date slice is shorter than the charge slice). If both are missing the charge has no date, and nothing is invented: it cannot match, and it is not pre-staged (`no usable date for the charge`).
 - Ledger dates carry no time zone (they are parsed as UTC from Walmart's local wall-clock text). They are treated as a wall-clock calendar day, never an instant, and the matcher compares calendar days.
-- Still UNVERIFIED against a live session: the real format of `Order.OrderDate` and `OrderSummary.DeliveredDate` (the parser accepts RFC 3339, `2006-01-02`, `2006-01-02T15:04:05`, `Jan 2, 2006`, `January 2, 2006`), and how often `ChargedDates` is actually populated.
+- Verified live on 2026-10-09 (one delivery order, 1 charge): `Order.OrderDate` and `OrderSummary.DeliveredDate` are RFC 3339 with a UTC offset (`2026-07-23T09:20:33-05:00`), and `ChargedDates` is populated (`2026-07-23T14:27:00Z`). The `Z` is only a label: the charge came 2 minutes after the 14:25 Central delivery, so the value is Central wall-clock time, which matches treating it as a calendar day. The client's built-in default `getOrder` hash still worked, so no `getOrder` capture was needed. Still unverified: orders with several charges, and how often `ChargedDates` is empty.
 
 ## Split-in-place probe
 
@@ -136,4 +136,4 @@ Behavior or safety items a user or maintainer should know; none blocks the manua
 - Two charges with identical amounts on the same day in the same account cannot be told apart; the matcher pairs them with transactions lowest ID first, so each may get the other's transaction.
 - The categorizer's repair retry embeds the model's previous reply and quoted item names in the next prompt (bounded, only after a rejected reply, and output validation still applies).
 - yaml type errors can echo the offending raw config text; `${VAR}` expansion has no escape for a literal `${`.
-- Still UNVERIFIED against live Walmart (needs the spike run): date formats, which `OrderSummary.Type` values mean in-store, tax/tip/fee placement per fulfillment type, whether refunds or Walmart Cash show in `FinalCharges`, whether purchase history lists newest first (`-max` assumes it), and cookie lifetime.
+- Still UNVERIFIED against live Walmart (one delivery order seen so far): which `OrderSummary.Type` values mean in-store, tax/tip/fee placement per fulfillment type, whether refunds or Walmart Cash show in `FinalCharges`, whether purchase history lists newest first (`-max` assumes it), and cookie lifetime.
