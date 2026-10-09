@@ -479,3 +479,7 @@ slog levels, commit format).
 Credit: the design is based on eshaffer321/itemize, which has no license, so no
 code was copied (clean reimplementation). The Walmart data layer is
 eshaffer321/walmart-client-go v2.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
