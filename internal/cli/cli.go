@@ -30,7 +30,8 @@ commands:
   version                            print the version
   ynab categories [-eligible]        list YNAB categories (name, group, id)
   ynab accounts                      list YNAB accounts (name, id, type)
-  ynab probe-split [-yes] <txn-id>   try an in-place split on ONE real transaction
+  ynab probe-split [-yes] [-categories "A,B"] <txn-id>
+                                     try an in-place split on ONE real transaction
   walmart [-dry-run] [-days N] [-max N] [-force] [-verbose]
                                      split recent Walmart card charges by item category
                                      (-days default 14; -max 0 = no limit)
@@ -151,8 +152,10 @@ func runYNAB(ctx context.Context, configPath string, args []string, env Env) err
 		})
 	default:
 		yes := false
+		categoriesSpec := ""
 		fs := newFlagSet(sub)
 		fs.BoolVar(&yes, "yes", false, "confirm the write to the real transaction")
+		fs.StringVar(&categoriesSpec, "categories", "", "two category names to split into, separated by a comma")
 		pos, err := parseInterspersed(fs, subArgs)
 		if err != nil {
 			return err
@@ -160,8 +163,12 @@ func runYNAB(ctx context.Context, configPath string, args []string, env Env) err
 		if len(pos) != 1 {
 			return fmt.Errorf("%w: probe-split needs exactly one transaction ID", errUsage)
 		}
+		names, err := parseProbeCategories(categoriesSpec)
+		if err != nil {
+			return err
+		}
 		return withClient(configPath, env, func(c *ynab.Client, cfg *config.Config) error {
-			return probeSplit(ctx, c, cfg.YNAB.PlanID, env.Stdout, pos[0], yes)
+			return probeSplit(ctx, c, cfg.YNAB.PlanID, env.Stdout, pos[0], yes, names)
 		})
 	}
 }

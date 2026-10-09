@@ -181,7 +181,7 @@ itemize-ynab [-config path] <command>
 | `version` | Print the version (`itemize-ynab dev` for a local build). |
 | `ynab accounts` | List accounts: name, ID, type. |
 | `ynab categories [-eligible]` | List categories: name, group, ID. |
-| `ynab probe-split [-yes] <txn-id>` | Try an in-place split on ONE real transaction. Without `-yes` it only shows what it would do and exits 1. |
+| `ynab probe-split [-yes] [-categories "A,B"] <txn-id>` | Try an in-place split on ONE real transaction. Without `-yes` it only shows what it would do (the two categories and the exact amounts) and exits 1. `-categories` picks the two categories to split into (comma-separated, case-insensitive, must be categories the categorizer may use, so a name with a comma cannot be chosen); without it the first two eligible categories are used. |
 | `walmart import-curl <file\|->` | Write the cookie store from a cURL capture (section 3). Takes no flags. |
 | `walmart [-dry-run] [-days N] [-max N] [-force] [-verbose]` | The main run. |
 
@@ -210,11 +210,14 @@ scheduling (section 7) only after the whole sequence succeeded.
    ```
 
    It reads the transaction and your categories, prints what it would do and
-   refuses (exit 1) without writing. Then run it with `-yes`, which performs a
-   real write on that throwaway transaction:
+   refuses (exit 1) without writing. By default it splits into the first two
+   eligible categories in your plan; to choose which two categories the test
+   touches, add `-categories "Groceries,Household"` (see `ynab categories
+   -eligible` for the names). Then run it with `-yes`, which performs a real
+   write on that throwaway transaction:
 
    ```
-   bin/itemize-ynab -config config.local.yaml ynab probe-split -yes <txn-id>
+   bin/itemize-ynab -config config.local.yaml ynab probe-split -yes -categories "Groceries,Household" <txn-id>
    ```
 
    It splits the transaction in two, reports the verdict (`split-in-place

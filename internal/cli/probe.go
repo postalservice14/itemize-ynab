@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/postalservice14/itemize-ynab/internal/adapters/ynab"
 )
@@ -22,8 +23,10 @@ const (
 
 // probeSplit tries to turn one real, non-split transaction into a split with a
 // single PUT, reports what YNAB did and tries to undo it. It mutates the
-// transaction, so it refuses to write unless yes is true.
-func probeSplit(ctx context.Context, c *ynab.Client, planID string, w io.Writer, txnID string, yes bool) error {
+// transaction, so it refuses to write unless yes is true. names, when set, are
+// the two categories to split into (see parseProbeCategories); otherwise the
+// first two eligible categories in the plan are used.
+func probeSplit(ctx context.Context, c *ynab.Client, planID string, w io.Writer, txnID string, yes bool, names []string) error {
 	orig, err := c.GetTransaction(ctx, txnID)
 	if err != nil {
 		return err
@@ -35,15 +38,18 @@ func probeSplit(ctx context.Context, c *ynab.Client, planID string, w io.Writer,
 	if err != nil {
 		return err
 	}
-	picked := ynab.EligibleCategories(cats)
-	if len(picked) < 2 {
-		return fmt.Errorf("probe-split needs at least 2 eligible categories in the plan, found %d", len(picked))
+	picked, err := pickProbeCategories(cats, names)
+	if err != nil {
+		return err
 	}
 	req := buildProbeRequest(orig, picked[0], picked[1])
 
 	_, _ = fmt.Fprintf(w, "transaction %s: %s, %s, amount %d milliunits, memo %q\n",
 		orig.ID, orig.Date, orig.PayeeName, orig.Amount, orig.Memo)
 	_, _ = fmt.Fprintf(w, "will split into %q and %q\n", picked[0].Name, picked[1].Name)
+	for i, sub := range req.SubTransactions {
+		_, _ = fmt.Fprintf(w, "  part %d: %q, %d milliunits\n", i+1, picked[i].Name, sub.Amount)
+	}
 	if !yes {
 		return fmt.Errorf("%w: probe-split modifies a real transaction; re-run with -yes to proceed", errUsage)
 	}
@@ -67,6 +73,57 @@ func probeSplit(ctx context.Context, c *ynab.Client, planID string, w io.Writer,
 		return err
 	}
 	return verifyAndRevert(ctx, c, w, orig)
+}
+
+// parseProbeCategories turns the -categories flag text into exactly two
+// distinct, non-empty category names. Empty text means "not chosen" and returns
+// nil. Names are separated by a comma, so a name containing a comma cannot be
+// chosen this way.
+func parseProbeCategories(spec string) ([]string, error) {
+	if strings.TrimSpace(spec) == "" {
+		return nil, nil
+	}
+	parts := strings.Split(spec, ",")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("-categories needs exactly two category names separated by a comma, got %d", len(parts))
+	}
+	names := make([]string, 2)
+	for i, p := range parts {
+		names[i] = strings.TrimSpace(p)
+		if names[i] == "" {
+			return nil, errors.New("-categories has an empty category name")
+		}
+	}
+	if strings.EqualFold(names[0], names[1]) {
+		return nil, fmt.Errorf("-categories names the same category twice (%q)", names[0])
+	}
+	return names, nil
+}
+
+// pickProbeCategories chooses the two categories to split into. With no names
+// it takes the first two the categorizer may use; with names it resolves each
+// among those eligible categories, so a hidden, internal, credit card or
+// deleted category can never be chosen, and an ambiguous name is refused.
+func pickProbeCategories(cats []ynab.Category, names []string) ([2]ynab.Category, error) {
+	eligible := ynab.EligibleCategories(cats)
+	if len(names) == 0 {
+		if len(eligible) < 2 {
+			return [2]ynab.Category{}, fmt.Errorf("probe-split needs at least 2 eligible categories in the plan, found %d", len(eligible))
+		}
+		return [2]ynab.Category{eligible[0], eligible[1]}, nil
+	}
+	var picked [2]ynab.Category
+	for i, name := range names {
+		c, err := ynab.FindCategoryByName(eligible, name)
+		if err != nil {
+			return picked, fmt.Errorf("-categories: %w (run `itemize-ynab ynab categories -eligible` to see the choices)", err)
+		}
+		picked[i] = c
+	}
+	if picked[0].ID == picked[1].ID {
+		return picked, fmt.Errorf("-categories names the same category twice (%q)", picked[0].Name)
+	}
+	return picked, nil
 }
 
 func checkProbeable(t ynab.Transaction) error {

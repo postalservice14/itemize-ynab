@@ -19,7 +19,7 @@ call from John are collected under "Open decisions for John" near the end.
 
 ## Split-in-place probe
 
-- Status: **NOT YET RUN - pending John.** `itemize-ynab ynab probe-split -yes <txn-id>` is built and unit-tested against httptest only; it has never been run against a real plan.
+- Status: **NOT YET RUN - pending John.** `itemize-ynab ynab probe-split -yes [-categories "A,B"] <txn-id>` is built and unit-tested against httptest only; it has never been run against a real plan.
 - Run it on one throwaway, non-split, non-transfer transaction: `itemize-ynab -config config.local.yaml ynab probe-split -yes <txn-id>`. Then replace this entry with the verdict line it prints and whether the revert succeeded.
 - Verdicts and what each means for `split_in_place`:
   - `split-in-place WORKS`: YNAB converts a non-split transaction to a split with one PUT. `auto` and `always` will take the primary path. Expect that YNAB may refuse to un-split through the API; the command then tells you to fix that one transaction by hand.
