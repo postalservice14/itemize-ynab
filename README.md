@@ -123,6 +123,11 @@ entry fails the live check instead of silently excluding nothing.
 | `OPENAI_API_KEY` (alias `OPENAI_APIKEY`) | OpenAI key. |
 | `OPENAI_MODEL` | OpenAI model. Required when OpenAI is used; there is no default. |
 
+The binary reads only the process environment, never a `.env` file. To keep the
+variables in a git-ignored `.env`, use [direnv](https://direnv.net): the
+committed `.envrc` loads `.env` when you enter the repo, after a one-time
+`direnv allow`.
+
 With both an Anthropic and an OpenAI key set and `CATEGORIZER_PROVIDER` unset,
 Anthropic is used.
 
