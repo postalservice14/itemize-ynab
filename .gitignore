@@ -1,0 +1,25 @@
+.superpowers/
+
+# Binaries
+/bin/
+/itemize-ynab
+/spike-walmart
+*.test
+coverage.out
+coverage.html
+
+# Local state and secrets
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+cookies.json
+curl.txt
+curl*.txt
+*.curl
+*.lock
+.env
+.env.*
+!.env.example
+config.local.yaml

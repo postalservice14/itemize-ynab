@@ -1,0 +1,35 @@
+# Example configuration. Copy to config.local.yaml (git-ignored) for real use and
+# pass it with `itemize-ynab -config config.local.yaml ...` (the flag goes BEFORE
+# the command; the default is ./config.yaml). Secrets come from the environment,
+# never from this file. ${VAR} is expanded anywhere in a value; unknown keys in
+# the ynab, database and walmart blocks are rejected.
+ynab:
+  token: "${YNAB_TOKEN}"
+  plan_id: "last-used"           # or the plan UUID. Only a UUID enables the local
+                                # transaction cache (delta reads); last-used, default
+                                # or any non-UUID makes one full read every run.
+  flag_color: "purple"          # used for anything that needs a human
+  accounts:                     # card last 4 -> YNAB account ID (enables pre-staging).
+                                # The entry below is a placeholder: replace it (see
+                                # `itemize-ynab ynab accounts`) or the account check fails.
+    "0000": "00000000-0000-0000-0000-000000000000"
+  category_overrides:           # categorizer output name -> YNAB category name.
+                                # Example only: fails the live check unless your
+                                # plan has a "Pets" category.
+    "Pet Supplies": "Pets"
+  match_window:
+    days_before: 2
+    days_after: 10
+  split_in_place: auto          # auto | always | never
+
+database:
+  path: itemize-ynab.db         # SQLite file (default itemize-ynab.db). A relative path
+                                # resolves against this file's directory, not the cwd.
+                                # Holds the idempotency record; back it up (WAL: -wal/-shm too).
+                                # Runs take a lock file next to it (<path>.lock).
+
+walmart:
+  # Cookie store written (and replaced on every refresh) by
+  # `itemize-ynab walmart import-curl <file|->`. Default shown. A leading ~ is the
+  # home directory. Holds live session cookies: keep it 0600 and never commit it.
+  cookie_file: "~/.walmart-api/cookies.json"
