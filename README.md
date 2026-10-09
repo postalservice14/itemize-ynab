@@ -168,8 +168,8 @@ The command prints `cookie store written to <path>` and makes no network call.
 - The capture must contain the `CID`, `SPID` and `auth` cookies; otherwise it
   fails with a message naming the missing one. Walmart's other cookies and a
   few request headers (including the `getOrder` query hash) are stored too.
-- `import-curl` loads the whole config, so `YNAB_TOKEN` must be set even though
-  the token is not used. Any non-empty value works for this one command.
+- `import-curl` reads only the `walmart:` section of the config, so it runs
+  without `YNAB_TOKEN`; problems elsewhere in the config surface on the next run.
 - Running it again REPLACES the existing store. That is the refresh workflow:
   there is no separate refresh command.
 - The file is created with permission 0600 and its directory 0700. Never commit

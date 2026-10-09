@@ -124,3 +124,14 @@ func rewriteCookiePath(t *testing.T, h *wmHarness, cookies string) string {
 	require.NoError(t, os.WriteFile(h.cfg, []byte(out), 0o600)) //nolint:gosec // a path inside t.TempDir()
 	return h.cfg
 }
+
+func TestImportCurl_runsWithoutTheYNABToken(t *testing.T) {
+	h := newWMHarness(t)
+	t.Setenv("YNAB_TOKEN", "")
+	h.stdin = syntheticCurl()
+
+	r := h.run("walmart", "import-curl", "-")
+
+	require.Equal(t, 0, r.code, r.stderr)
+	assert.FileExists(t, filepath.Join(h.dir, "cookies.json"))
+}

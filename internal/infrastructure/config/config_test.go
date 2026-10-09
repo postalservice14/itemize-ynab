@@ -329,3 +329,59 @@ func TestParse_excludeCategoriesBlankEntryRejected(t *testing.T) {
 	require.ErrorIs(t, err, config.ErrInvalid)
 	assert.Contains(t, err.Error(), "exclude_categories")
 }
+
+func TestParseCookieFile_readsOnlyTheWalmartSetting(t *testing.T) {
+	yaml := "ynab:\n  token: \"${YNAB_TOKEN}\"\n  split_in_place: bogus\nwalmart:\n  cookie_file: ~/c/cookies.json\n"
+
+	got, err := config.ParseCookieFile([]byte(yaml), env(nil), "/etc/iy", "/home/u")
+
+	require.NoError(t, err)
+	assert.Equal(t, filepath.FromSlash("/home/u/c/cookies.json"), got)
+}
+
+func TestParseCookieFile_defaultsWithoutAWalmartSection(t *testing.T) {
+	got, err := config.ParseCookieFile([]byte("ynab:\n  token: a\n"), env(nil), "/etc/iy", "/home/u")
+
+	require.NoError(t, err)
+	assert.Equal(t, filepath.FromSlash("/home/u/.walmart-api/cookies.json"), got)
+}
+
+func TestParseCookieFile_expandsAndResolvesRelativeToConfig(t *testing.T) {
+	yaml := "walmart:\n  cookie_file: \"${CK_DIR}/cookies.json\"\n"
+
+	got, err := config.ParseCookieFile([]byte(yaml), env(map[string]string{"CK_DIR": "rel"}), filepath.FromSlash("/etc/iy"), "/home/u")
+
+	require.NoError(t, err)
+	assert.Equal(t, filepath.FromSlash("/etc/iy/rel/cookies.json"), got)
+}
+
+func TestParseCookieFile_rejectsBadWalmartInput(t *testing.T) {
+	tests := map[string]string{
+		"malformed yaml":      "walmart: [\n",
+		"unknown walmart key": "walmart:\n  cookies: x\n",
+		"missing env var":     "walmart:\n  cookie_file: \"${NOPE_CK}\"\n",
+		"other user's home":   "walmart:\n  cookie_file: ~bob/c.json\n",
+	}
+	for name, yaml := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := config.ParseCookieFile([]byte(yaml), env(nil), "/etc/iy", "/home/u")
+
+			require.ErrorIs(t, err, config.ErrInvalid)
+		})
+	}
+}
+
+func TestLoadCookieFile_readsFileWithoutTheToken(t *testing.T) {
+	t.Setenv("YNAB_TOKEN", "")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("ynab:\n  token: \"${YNAB_TOKEN}\"\nwalmart:\n  cookie_file: c.json\n"), 0o600))
+
+	got, err := config.LoadCookieFile(path)
+
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(dir, "c.json"), got)
+
+	_, err = config.LoadCookieFile(filepath.Join(dir, "missing.yaml"))
+	require.ErrorIs(t, err, config.ErrInvalid)
+}

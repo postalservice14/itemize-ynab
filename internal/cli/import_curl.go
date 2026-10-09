@@ -21,11 +21,10 @@ const maxCurlBytes = 4 << 20
 // browser "Copy as cURL" capture, read from src (a file, or "-" for stdin). It
 // makes no network call. Cookie values and the capture text are never printed.
 func runImportCurl(configPath, src string, env Env) error {
-	cfg, err := config.Load(configPath)
+	dest, err := config.LoadCookieFile(configPath)
 	if err != nil {
 		return err
 	}
-	dest := cfg.Walmart.CookieFile
 	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
 		return fmt.Errorf("create the directory for walmart.cookie_file: %w", err)
 	}
