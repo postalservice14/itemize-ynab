@@ -108,6 +108,13 @@ call from John are collected under "Open decisions for John" near the end.
 - Status: settled (was open decision 2). When YNAB answers a split-in-place update with live subtransactions that differ from the request, the writer restores the memo (and category if changed), creates no sibling, records nothing, and returns an error naming the transaction. The original may hold an unverified split, so check it by hand. Split-in-place is switched off for the rest of the run in `auto` mode, as after any rejection.
 - A 200 with no live subtransactions still counts as "ignored": restore the memo, then create a flagged sibling.
 
+## First live run and the LLM default
+
+- Status: settled (was open decision 8). On 2026-10-09 a dry run and then a real run, both with `-days 90`, exercised the whole pipeline against live YNAB, Walmart and Anthropic. The `claude-haiku-5-5` default returned a valid single-category answer in about 2 seconds with no `max_tokens` problem, so it stays the default.
+- The real run matched the one delivery order in the window to its YNAB transaction (same amount, YNAB date 3 days after the Walmart charge date) and wrote outcome `categorized`. Read back from YNAB: category Misc, memo = the item name plus the `[itemize:...]` marker (the memo was empty, so the item name is the base), still cleared, no flag, no subtransactions. The tool never sends `approved` for a matched transaction, so the approval state is whatever it was before.
+- The 90-day window returned only that one order. Several smaller Walmart charges in YNAB over the same weeks were not returned, which suggests in-store purchases are absent from the purchase history the adapter reads. Not yet investigated.
+- The exclude-list work came from this run: without `ynab.exclude_categories` the eligible set included income, bill and savings categories.
+
 ## Open decisions for John
 
 Current defaults are what the code does today; none of these is implemented differently.
@@ -117,7 +124,6 @@ Current defaults are what the code does today; none of these is implemented diff
 5. Approved or unapproved for tool-created transactions. Unapproved lands them in YNAB's review queue and is safer; approved saves a click. Default: unapproved. (Matched transactions keep whatever approval state they had.)
 6. A reset command for a `needs_manual_match` database row, so a forced reprocess does not require editing SQLite by hand. Default: none; delete the `ynab_charges` row manually.
 7. Ctrl-C exit code: 1 today; 130 is the shell convention. Default: 1.
-8. The `claude-haiku-5-5` default (a valid current model ID, not yet exercised against the live API by this tool). Run once against the live API; if replies hit `max_tokens` because of adaptive thinking, raise the limit or check `stop_reason`. Default: `claude-haiku-5-5`.
 9. Whether a dry run should avoid refreshing the local transaction cache. Avoiding it makes a dry run strictly read-only locally but costs a full fetch each time or a stale view. Default: it may refresh the cache.
 10. `last-used` and the delta cache. Current: a non-UUID `plan_id` bypasses the cache (one full read per run). Alternative: fingerprint the plan from the categories already fetched in the preflight (for example the ID of the internal "Inflow: Ready to Assign" category) and key the cache by it, restoring the delta for `last-used`. Default: bypass.
 
