@@ -46,7 +46,7 @@ func TestRunOrchestrator_chargesPostedTogether_splitOneTransaction(t *testing.T)
 	assert.Equal(t, []int64{2000, 3000, 1000}, []int64{sum.Rows[0].AmountCents, sum.Rows[1].AmountCents, sum.Rows[2].AmountCents},
 		"rows stay in charge order")
 	assert.Equal(t, []string{"tC", "tC", "tC3"}, []string{sum.Rows[0].TxnID, sum.Rows[1].TxnID, sum.Rows[2].TxnID})
-	assert.Contains(t, sum.Rows[0].Note, "paid together with 1 other charge by one $50.00 transaction")
+	assert.Equal(t, "paid together with 1 other charge by one $50.00 transaction", sum.Rows[0].Note)
 	assert.Equal(t, []SplitView{
 		{Category: "Household", CategoryID: catHome, AmountCents: 1800},
 		{Category: "Groceries", CategoryID: catGroc, AmountCents: 1200},

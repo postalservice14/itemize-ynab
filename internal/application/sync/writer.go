@@ -249,8 +249,11 @@ func candidateIDs(txns []matcher.Txn) []string {
 }
 
 func joinNotes(a, b string) string {
-	if a == "" {
+	switch {
+	case a == "":
 		return b
+	case b == "":
+		return a
 	}
 	return a + "; " + b
 }
