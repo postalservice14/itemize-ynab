@@ -129,7 +129,7 @@ func TestRunOrchestrator_dryRun_zeroWritesOfAnyKind(t *testing.T) {
 	assert.Len(t, sum.Rows[1].Splits, 2, "planned splits are reported")
 }
 
-func TestRunOrchestrator_force_passesThroughAndRefusesManualMatch(t *testing.T) {
+func TestRunOrchestrator_force_passesThrough(t *testing.T) {
 	h := newOrchHarness(t)
 	a, tA := orderA()
 	n := order.Order{ID: "oN", DisplayID: "N-1", Items: []order.Item{item("Soap", 999)},
@@ -138,7 +138,7 @@ func TestRunOrchestrator_force_passesThroughAndRefusesManualMatch(t *testing.T) 
 	h.withTxns(tA)
 	h.srv.On(http.MethodPut, txnPath("tA"), okTxn(tA))
 	require.NoError(t, h.store.RecordCharge(context.Background(), storage.ChargeRecord{
-		Key: "walmart:oN:999:1", OrderID: "oN", YNABTxnID: "sib-9", Outcome: string(NeedsManualMatch), CreatedAt: now,
+		Key: "walmart:oN:999:1", OrderID: "oN", YNABTxnID: "t9", Outcome: string(NeedsManualMatch), CreatedAt: now,
 	}))
 	first, err := h.run(t, Options{Days: 14})
 	require.NoError(t, err)
@@ -151,8 +151,7 @@ func TestRunOrchestrator_force_passesThroughAndRefusesManualMatch(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, []Status{StatusCategorized, StatusSkipped}, statuses(sum.Rows))
 	assert.Len(t, h.cat.calls, 2, "force reconsiders every charge")
-	assert.Contains(t, sum.Rows[1].Note, "sib-9")
-	assert.Contains(t, sum.Rows[1].Note, "duplicate sibling")
+	assert.Equal(t, noMatchNote, sum.Rows[1].Note, "no unmarked bank transaction matches it")
 	assert.Equal(t, 1, h.srv.WriteCount(), "only the forced categorize PUT")
 }
 

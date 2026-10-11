@@ -11,14 +11,14 @@ import (
 // Outcome is what the writer did (or, in a dry run, would do) with a charge.
 type Outcome string
 
-// Outcomes. Only Categorized, SplitInPlace, NeedsManualMatch and
-// StagedForImport are recorded in the store; Skipped and AlreadyProcessed are
-// never recorded, so a skipped charge is retried on the next run.
+// Outcomes. Only Categorized, SplitInPlace and NeedsManualMatch are recorded
+// in the store; Skipped and AlreadyProcessed are never recorded, so a skipped
+// charge is retried on the next run. The writer only updates transactions the
+// bank imported; it never creates one.
 const (
 	Categorized      Outcome = "categorized"
 	SplitInPlace     Outcome = "split_in_place"
 	NeedsManualMatch Outcome = "needs_manual_match"
-	StagedForImport  Outcome = "staged_for_import"
 	Skipped          Outcome = "skipped"
 	AlreadyProcessed Outcome = "already_processed"
 )
@@ -29,13 +29,12 @@ type Mode string
 // Split-in-place modes.
 const (
 	// ModeAuto tries split-in-place and switches it off for the rest of the
-	// run after the first rejection (a 400 or a silently ignored split).
+	// run after the first rejection (a 400 or a silently ignored split); later
+	// multi-category charges are flagged for a manual split.
 	ModeAuto Mode = "auto"
 	// ModeAlways tries split-in-place on every charge and never switches it
-	// off; a rejected charge still falls back to the sibling split.
+	// off; a rejected charge is still flagged for a manual split.
 	ModeAlways Mode = "always"
-	// ModeNever goes straight to the sibling split.
-	ModeNever Mode = "never"
 )
 
 // ParseMode parses the split_in_place config value. An empty value is
@@ -44,10 +43,10 @@ func ParseMode(s string) (Mode, error) {
 	switch m := Mode(s); m {
 	case "":
 		return ModeAuto, nil
-	case ModeAuto, ModeAlways, ModeNever:
+	case ModeAuto, ModeAlways:
 		return m, nil
 	default:
-		return "", fmt.Errorf("split_in_place %q must be one of auto, always, never", s)
+		return "", fmt.Errorf("split_in_place %q must be one of auto, always", s)
 	}
 }
 
@@ -62,10 +61,6 @@ type ChargeJob struct {
 	// Splits are negative milliunit amounts summing exactly to
 	// -Charge.AmountCents*10.
 	Splits []splitter.Split
-	// OrderCharges is how many card charges the order has. Above one the
-	// charge is never pre-staged: the bank may post several of them as one
-	// amount, which a staged transaction can never merge with.
-	OrderCharges int
 	// Members are the charges a combined job stands for (see CombineJobs);
 	// nil for a single charge.
 	Members []order.Charge
@@ -75,9 +70,8 @@ type ChargeJob struct {
 type Result struct {
 	Key     string
 	Outcome Outcome
-	// TxnID is the YNAB transaction written: the matched transaction, the
-	// sibling split for NeedsManualMatch, or the staged transaction. Empty
-	// when nothing was (or, in a dry run, would be) written to a known ID.
+	// TxnID is the matched YNAB transaction that was (or, in a dry run, would
+	// be) written. Empty when nothing was written.
 	TxnID  string
 	Splits []splitter.Split
 	DryRun bool

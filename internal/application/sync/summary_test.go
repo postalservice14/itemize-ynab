@@ -21,7 +21,7 @@ func TestSummaryExitCode(t *testing.T) {
 	}{
 		"empty run":                {Summary{}, 0},
 		"all good or skipped":      {Summary{Rows: []Row{{Status: StatusCategorized}, {Status: StatusSkipped}, {Status: StatusAlreadyProcessed}}}, 0},
-		"manual match is not fail": {Summary{Rows: []Row{{Status: StatusNeedsManualMatch}, {Status: StatusStagedForImport}}}, 0},
+		"manual match is not fail": {Summary{Rows: []Row{{Status: StatusNeedsManualMatch}}}, 0},
 		"one failed":               {Summary{Rows: []Row{{Status: StatusCategorized}, {Status: StatusFailed}}}, 2},
 		"stopped early":            {Summary{StoppedEarly: stop}, 3},
 		"stopped beats failed":     {Summary{Rows: []Row{{Status: StatusFailed}}, StoppedEarly: stop}, 3},

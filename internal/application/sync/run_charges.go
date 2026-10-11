@@ -29,7 +29,7 @@ func (r *run) processCharges(ctx context.Context, display string, o order.Order,
 		}
 		slots[i].row.Splits = r.views(plan[i])
 		acct, _ := order.ResolveAccount(c.LastFour, r.o.d.Config.YNAB.Accounts)
-		jobs[i] = ChargeJob{Charge: c, OrderDisplayID: display, AccountID: acct, Splits: plan[i], OrderCharges: len(o.Charges)}
+		jobs[i] = ChargeJob{Charge: c, OrderDisplayID: display, AccountID: acct, Splits: plan[i]}
 		pending = append(pending, i)
 	}
 	w, err := r.writerFor(ctx)

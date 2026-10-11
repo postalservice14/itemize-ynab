@@ -40,7 +40,8 @@ func TestRun_rateLimitMidRun_partialResults(t *testing.T) {
 	assert.Empty(t, h.srv.Calls(http.MethodPut, txnPath("t3")))
 }
 
-// mixedRun is a single-category match, an accepted split and a staged charge.
+// mixedRun is a single-category match, an accepted split and a charge with
+// no bank transaction yet.
 func mixedRun(h *harness) ([]ynab.Transaction, []ChargeJob) {
 	t1 := wm("t1", acctA, -12340, date(10, 5))
 	t2 := wm("t2", acctA, -50000, date(10, 5))
@@ -51,7 +52,6 @@ func mixedRun(h *harness) ([]ynab.Transaction, []ChargeJob) {
 	}
 	h.srv.On(http.MethodPut, txnPath("t1"), okTxn(t1))
 	h.srv.On(http.MethodPut, txnPath("t2"), okTxn(savedAs(t2, "[itemize:k2]", jobs[1].Splits)))
-	h.srv.On(http.MethodPost, createPath, okTxn(ynab.Transaction{ID: "st-1"}))
 	return []ynab.Transaction{t1, t2}, jobs
 }
 
@@ -68,13 +68,13 @@ func TestRun_rerunAfterSuccess_zeroWrites(t *testing.T) {
 	txns, jobs := mixedRun(h)
 	first, err := runAll(context.Background(), h.writer(t, txns), jobs...)
 	require.NoError(t, err)
-	require.Equal(t, []Outcome{Categorized, SplitInPlace, StagedForImport}, outcomes(first))
+	require.Equal(t, []Outcome{Categorized, SplitInPlace, Skipped}, outcomes(first))
 	h.srv.Reset()
 
 	second, err := runAll(context.Background(), h.writer(t, txns), jobs...)
 
 	require.NoError(t, err)
-	assert.Equal(t, []Outcome{AlreadyProcessed, AlreadyProcessed, AlreadyProcessed}, outcomes(second))
+	assert.Equal(t, []Outcome{AlreadyProcessed, AlreadyProcessed, Skipped}, outcomes(second), "the unmatched charge retries")
 	assert.Empty(t, h.srv.Requests(), "a rerun makes no YNAB calls at all")
 }
 
@@ -126,20 +126,6 @@ func TestRun_dryRun_zeroWrites_samePlannedOutcomes(t *testing.T) {
 	assert.Contains(t, dry[1].Note, "assumes split-in-place")
 }
 
-func TestRun_dryRun_siblingPlanned(t *testing.T) {
-	h := newHarness(t)
-	orig := wm("t1", acctA, -50000, date(10, 5))
-
-	res, err := h.writer(t, []ynab.Transaction{orig}, dryRun(), mode(ModeNever)).
-		Process(context.Background(), multiJob("k1", 5000, date(10, 5), acctA))
-
-	require.NoError(t, err)
-	assert.Equal(t, NeedsManualMatch, res.Outcome)
-	assert.True(t, res.DryRun)
-	assert.Contains(t, res.Note, "t1")
-	assert.Empty(t, h.srv.Requests())
-}
-
 func TestRun_dryRun_alreadyProcessedStillReported(t *testing.T) {
 	h := newHarness(t)
 	orig := wm("t1", acctA, -12340, date(10, 5))
@@ -157,36 +143,30 @@ func TestRun_dryRun_alreadyProcessedStillReported(t *testing.T) {
 	assert.Empty(t, h.srv.Requests())
 }
 
-func TestRun_force_needsManualMatchRecorded_neverCreatesSecondSibling(t *testing.T) {
+func TestRun_force_needsManualMatchRecorded_markerStillProtects(t *testing.T) {
 	h := newHarness(t)
 	orig := wm("t1", acctA, -50000, date(10, 5))
-	h.srv.On(http.MethodPost, createPath, okTxn(ynab.Transaction{ID: "sib-1"}), okTxn(ynab.Transaction{ID: "sib-2"}))
-	h.srv.On(http.MethodPut, txnPath("t1"), okTxn(orig))
+	h.srv.On(http.MethodPut, txnPath("t1"), badRequest(), okTxn(orig))
 	job := multiJob("k1", 5000, date(10, 4), acctA)
-	first, err := h.writer(t, []ynab.Transaction{orig}, mode(ModeNever)).Process(context.Background(), job)
+	first, err := h.writer(t, []ynab.Transaction{orig}).Process(context.Background(), job)
 	require.NoError(t, err)
 	require.Equal(t, NeedsManualMatch, first.Outcome)
-	require.Equal(t, "sib-1", first.TxnID)
 	h.srv.Reset()
 
-	// Post-run YNAB state: the original is flagged but unmarked; the sibling is marked.
+	// Post-run YNAB state: the original is flagged and marked.
 	flagged := orig
 	flagged.FlagColor = flagColor
-	sibling := wm("sib-1", acctA, -50000, date(10, 5), withMemo("[itemize:k1]"))
-	sibling.SubTransactions = []ynab.SubTransaction{{ID: "s1", Amount: -30000}, {ID: "s2", Amount: -20000}}
+	flagged.Memo = "[itemize:k1]"
 
-	res, err := h.writer(t, []ynab.Transaction{flagged, sibling}, mode(ModeNever), force()).
-		Process(context.Background(), job)
+	res, err := h.writer(t, []ynab.Transaction{flagged}, force()).Process(context.Background(), job)
 
 	require.NoError(t, err)
 	assert.Equal(t, Skipped, res.Outcome)
-	assert.Contains(t, res.Note, "sib-1")
-	assert.Contains(t, res.Note, "duplicate sibling")
-	assert.Empty(t, h.srv.Requests(), "a forced rerun must not create a second sibling")
+	assert.Empty(t, h.srv.Requests())
 	rec, ok := h.recorded(t, "k1")
 	require.True(t, ok)
 	assert.Equal(t, string(NeedsManualMatch), rec.Outcome, "the existing record is kept")
-	assert.Equal(t, "sib-1", rec.YNABTxnID)
+	assert.Equal(t, "t1", rec.YNABTxnID)
 }
 
 func TestRun_force_storeReadFails_noRequest(t *testing.T) {

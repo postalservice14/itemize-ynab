@@ -210,37 +210,6 @@ func TestDefaultPayeeRE(t *testing.T) {
 	}
 }
 
-func TestHasAmountInAccount(t *testing.T) {
-	c := baseCharge()
-	c.AccountID = "acct-1"
-	other := func(x *Txn) { x.AccountID = "acct-2" }
-	tests := []struct {
-		name string
-		txn  Txn
-		want bool
-	}{
-		{"any payee counts", txn("a", 10, func(x *Txn) { x.PayeeName = "Target" }), true},
-		{"already split still counts", txn("a", 10, func(x *Txn) { x.IsSplit = true }), true},
-		{"marked still counts", txn("a", 10, func(x *Txn) { x.Memo = "[itemize:k]" }), true},
-		{"deleted ignored", txn("a", 10, func(x *Txn) { x.Deleted = true }), false},
-		{"other account ignored", txn("a", 10, other), false},
-		{"different amount", txn("a", 10, func(x *Txn) { x.AmountMilli = -45010 }), false},
-		{"outside window", txn("a", 25), false},
-		{"window boundary", txn("a", 20), true},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, HasAmountInAccount(c, []Txn{tc.txn}, DefaultOptions()))
-		})
-	}
-	assert.False(t, HasAmountInAccount(c, nil, DefaultOptions()))
-}
-
-func TestHasAmountInAccount_emptyAccountMeansUnrestricted(t *testing.T) {
-	c := baseCharge()
-	assert.True(t, HasAmountInAccount(c, []Txn{txn("a", 10)}, DefaultOptions()))
-}
-
 func TestStatusString(t *testing.T) {
 	assert.Equal(t, "matched", Matched.String())
 	assert.Equal(t, "ambiguous", Ambiguous.String())

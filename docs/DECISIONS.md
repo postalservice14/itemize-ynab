@@ -13,7 +13,7 @@ call from John are collected under "Open decisions for John" near the end.
 ## PRD section 5.1 correction: ledger charge dates
 
 - The PRD says "the ledger does not provide a date for each charge, so the order date stands in for it". That is wrong for walmart-client-go v2.2.1: `PaymentMethodCharges.ChargedDates` is parallel to `FinalCharges` and holds a per-charge date and time.
-- Built behavior: matching anchors on the charge's own date. The order date is a fallback only when the ledger date is missing, zero or unparseable (or the date slice is shorter than the charge slice). If both are missing the charge has no date, and nothing is invented: it cannot match, and it is not pre-staged (`no usable date for the charge`).
+- Built behavior: matching anchors on the charge's own date. The order date is a fallback only when the ledger date is missing, zero or unparseable (or the date slice is shorter than the charge slice). If both are missing the charge has no date, and nothing is invented: it cannot match and is `skipped` (`no usable date for the charge`).
 - Ledger dates carry no time zone (they are parsed as UTC from Walmart's local wall-clock text). They are treated as a wall-clock calendar day, never an instant, and the matcher compares calendar days.
 - Verified live on 2026-10-09 (one delivery order, 1 charge): `Order.OrderDate` and `OrderSummary.DeliveredDate` are RFC 3339 with a UTC offset (`2026-07-23T09:20:33-05:00`), and `ChargedDates` is populated (`2026-07-23T14:27:00Z`). The `Z` is only a label: the charge came 2 minutes after the 14:25 Central delivery, so the value is Central wall-clock time, which matches treating it as a calendar day. The client's built-in default `getOrder` hash still worked, so no `getOrder` capture was needed. Orders with several charges: see "Charges the bank posts together". Still unverified: how often `ChargedDates` is empty.
 
@@ -22,9 +22,9 @@ call from John are collected under "Open decisions for John" near the end.
 - Status: **run 2026-10-09, verdict `split-in-place WORKS`.** One PUT with `category_id: null`, a marker memo and two subtransactions converted a non-split, uncategorized card transaction into a split; the follow-up GET showed `split=true` with both subtransactions saved. YNAB cannot revert it through the API (the command said so), so the throwaway transaction has to be un-split by hand in the app. The command is `itemize-ynab ynab probe-split -yes [-categories "A,B"] <txn-id>`.
 - Verdicts and what each means for `split_in_place`:
   - `split-in-place WORKS`: YNAB converts a non-split transaction to a split with one PUT. `auto` and `always` will take the primary path. Expect that YNAB may refuse to un-split through the API; the command then tells you to fix that one transaction by hand.
-  - `REJECTED (400)`: YNAB refuses. `auto` falls back to the sibling path after the first rejection each run, wasting one request per run; set `split_in_place: never` to skip the attempt.
-  - `IGNORED (200 but no subtransactions saved)`: YNAB accepts and drops the split. The writer's reply check catches it, restores the memo and falls back to the sibling path (same advice: `never`).
-- Consequence: split-in-place is the primary path (PRD section 6.5) and `auto`, the default, uses it. The sibling path remains the fallback for a rejection or an ignored split. Not tested live: a reconciled or already-split transaction, and the 400/ignored branches (httptest only).
+  - `REJECTED (400)`: YNAB refuses. `auto` flags the transaction for a manual split after the first rejection each run, wasting one request per run.
+  - `IGNORED (200 but no subtransactions saved)`: YNAB accepts and drops the split. The writer's reply check catches it, restores the memo and flags the transaction for a manual split.
+- Consequence: split-in-place is the primary path (PRD section 6.5) and `auto`, the default, uses it. Flagging for a manual split is the fallback for a rejection or an ignored split (see "Update only: no transaction creation"). Not tested live: a reconciled or already-split transaction, and the 400/ignored branches (httptest only).
 
 ## Walmart ledger 429 retry
 
@@ -61,32 +61,35 @@ call from John are collected under "Open decisions for John" near the end.
 ## Run lock
 
 - Status: settled (controller ruling R23).
-- Problem: two overlapping runs (cron plus a manual run) could both load transactions and pass the database check before either recorded a charge, writing duplicate staged transactions or siblings.
+- Problem: two overlapping runs (cron plus a manual run) could both load transactions and pass the database check before either recorded a charge, writing the same transaction twice (at the time, also duplicate staged transactions or siblings).
 - Decision: a `walmart` run, dry runs included (they may refresh the cache), takes an exclusive non-blocking `flock(2)` on `<database.path>.lock` after the config loads and before anything is built or any network call is made, and holds it until the run ends. A held lock exits 1 with `another itemize-ynab run is in progress (lock: <path>)`; it never waits. The kernel drops the lock if the process dies, so there is no stale-lock cleanup, and the file is left in place. `walmart import-curl` and the `ynab` commands do not take it. Code: `internal/infrastructure/lock`, wired in `internal/cli`.
 - Platforms: `flock` is used on macOS, Linux and the BSDs. Elsewhere (Windows, and AIX and Solaris, whose Go `syscall` package has no `Flock`) `Acquire` returns `lock.ErrUnsupported` with a no-op release and `walmart` refuses to run (exit 1), rather than run unguarded. A best-effort `O_EXCL` lock was rejected because a crash would leave a stale lock to delete by hand.
 
+## Update only: no transaction creation
+
+- Status: settled 2026-10-10 (John: "I don't want this app to make new transactions. Only categorize and split existing transactions that have been imported from my bank"). Supersedes "Fallback shape and approval of tool-created transactions" and the pre-staging rules.
+- The YNAB client has no create method, and `ynab.SaveTransaction` carries only category, memo, flag and subtransactions, so the tool cannot create a transaction or change an imported transaction's account, date, amount, payee, cleared or approved state. A unit test fails if a `Create*` method is added to the client.
+- No match: the charge is `skipped` with the note "no matching bank transaction yet; retried next run" and is not recorded, so a later run picks it up once the bank import arrives. (A charge with no usable date says so instead.) Pre-staging, its 10-day age limit, the same-amount and loaded-range checks, and the payee name for created transactions are gone.
+- Split not taken (a 400, or a 200 that ignored the split; after the memo restore): one PUT flags the matched transaction with `flag_color` and appends the `[itemize:...]` marker to its memo. Outcome `needs_manual_match`, recorded with the matched transaction's ID. The summary always lists the planned split under that row, so it can be typed in by hand. If the flag PUT fails, the charge fails and nothing is recorded; nothing was created, so a retry is safe. John chose this over leaving the transaction untouched and retrying, and over categorizing the whole amount to the largest category.
+- `split_in_place: never` is removed (it would only mean "flag every multi-category charge") and is now a config error.
+- Charges recorded as `staged_for_import` by earlier versions still count as processed and show as `already_processed` ("recorded as staged_for_import").
+
 ## Writer: split_in_place modes
 
-- `never`: a multi-category match goes straight to the sibling path (flagged user-entered split plus a flag on the original, outcome `needs_manual_match`).
-- `auto` (default): try split-in-place; after the first rejection in a run (HTTP 400, or a 200 whose reply does not hold the requested subtransactions) split-in-place is switched off for the rest of that run and later charges go straight to the sibling path. The next run tries again.
-- `always`: try split-in-place on every charge and never switch it off; a rejected charge still falls back to the sibling path rather than failing.
-- A 200 that silently drops the split has already written the marker memo, so the writer puts the original memo back (and the original category, if the reply shows it changed) before creating the sibling. If that restore fails, the charge fails with an error naming the transaction, because a marked original is invisible to the matcher and needs a human; no sibling is created.
+- `auto` (default): try split-in-place; after the first rejection in a run (HTTP 400, or a 200 whose reply does not hold the requested subtransactions) split-in-place is switched off for the rest of that run and later multi-category charges are flagged for a manual split. The next run tries again.
+- `always`: try split-in-place on every charge and never switch it off; a rejected charge is still flagged for a manual split rather than failing.
+- A 200 that silently drops the split has already written the marker memo, so the writer puts the original memo back (and the original category, if the reply shows it changed) before flagging. If that restore fails, the charge fails with an error naming the transaction, because a marked original is invisible to the matcher and needs a human.
 - Any other split-in-place error (5xx, network, 429) fails the charge without a fallback: the write may or may not have landed, so guessing is unsafe.
-- Cost if wrong: John may have wanted `always` to fail the charge instead of falling back.
+- Cost if wrong: John may have wanted `always` to fail the charge instead of flagging it.
 
-## Writer: memo, clock and pre-staging age
+## Writer: memo and clock
 
-- The parent memo is `memo.AppendMarker(existing memo, key)`; existing text is kept and never replaced. The one exception comes from `AppendMarker` itself: if memo plus marker would exceed YNAB's 200-character limit, the tail of the existing text is cut and ends in "…" so the marker always fits. When the existing memo is empty, a single-category charge uses its item names as the base. A multi-category `split_in_place` parent keeps its existing memo plus the marker (marker only if the memo was empty), since the item names are on the subtransactions. Only the sibling and a staged split carry the marker alone.
+- The parent memo is `memo.AppendMarker(existing memo, key)`; existing text is kept and never replaced. The one exception comes from `AppendMarker` itself: if memo plus marker would exceed YNAB's 200-character limit, the tail of the existing text is cut and ends in "…" so the marker always fits. When the existing memo is empty, a single-category charge uses its item names as the base. A multi-category `split_in_place` parent keeps its existing memo plus the marker (marker only if the memo was empty), since the item names are on the subtransactions. A transaction flagged for a manual split keeps its existing memo plus the marker.
 - The clock is injected (`Config.Now`); the writer never reads the system time.
-- A no-match charge is pre-staged only if: the card maps to an account; the charge has a date; `now - charge date < 10 days` (the limit is fixed at 10, not a config key; measured from the charge date at midnight UTC, so it means strictly under 240 hours); the date is no more than one day in the future (time-zone slack); the order has exactly one card charge (see "Charges the bank posts together"); the charge's match window (charge date minus `days_before`) does not start before the first loaded transaction day (`Config.LoadedFrom`, set by the orchestrator to the transactions' lower bound; otherwise a same-amount transaction could exist unseen, note "charge date window starts before the loaded transaction range; widen -days or re-run"); and no transaction in that account has the same amount within the match window, whatever its payee, split state or marker. Otherwise the charge is `skipped` with a note naming the failed condition and is not recorded, so it is retried next run.
-- Tool-created transactions (siblings and staged) are unapproved (see "Fallback shape and approval").
 
 ## Writer: -force
 
-- The writer still reads the SQLite record under `-force`.
-  - Recorded `categorized`, `split_in_place` or `staged_for_import`: the record is ignored and the charge is processed again. Only the memo marker protects against a duplicate write: the matcher excludes marked transactions, and the same-amount check then blocks pre-staging. A forced rerun over those charges is therefore `skipped` unless the marker was removed by hand.
-  - Recorded `needs_manual_match`: never written again. The charge is `skipped` (not re-recorded) with a note naming the existing sibling, because a rerun would match the flagged but unmarked original and create a duplicate sibling. Resolve or delete the sibling in YNAB first. Reprocessing such a charge then also needs its `ynab_charges` row removed, since `-force` alone keeps refusing.
-  - Not protected: a `needs_manual_match` charge whose record is gone (lost or replaced database). See the known gap below.
+- The writer still reads the SQLite record under `-force`, and ignores it: a recorded charge is processed again. Only the memo marker protects against a duplicate write: the matcher excludes marked transactions, so a forced rerun over written charges is `skipped` unless the marker was removed by hand. Removing the marker from a `needs_manual_match` transaction and forcing a rerun retries its split.
 
 ## Other behavior the build settled
 
@@ -99,14 +102,12 @@ call from John are collected under "Open decisions for John" near the end.
 
 ## needs_manual_match without the database
 
-- Status: settled (was open decision 1, option b). When the writer flags the original it also appends the `[itemize:...]` marker to its memo, in the same PUT, so the matcher no longer sees it. A lost database, or a sibling that was created but not recorded, no longer leads to a second sibling, provided the flag PUT succeeded.
-- Remaining gap: a sibling POST that YNAB applied but the client timed out on (30 seconds). The charge fails before the flag PUT, so the original is unmarked and unflagged, and a rerun creates a second sibling. Delete one by hand.
-- If the flag PUT itself fails after the sibling exists, the charge is still recorded with a note; the original has no marker, so only the database row stops a second sibling.
+- Status: settled (was open decision 1, option b). The flag PUT also appends the `[itemize:...]` marker to the memo, so the matcher no longer sees the transaction even without the database. Since 2026-10-10 there is no sibling, so the earlier gaps (a sibling POST that timed out after YNAB applied it, a sibling recorded without a flagged original) no longer exist.
 
 ## A 200 with a different split than requested
 
-- Status: settled (was open decision 2). When YNAB answers a split-in-place update with live subtransactions that differ from the request, the writer restores the memo (and category if changed), creates no sibling, records nothing, and returns an error naming the transaction. The original may hold an unverified split, so check it by hand. Split-in-place is switched off for the rest of the run in `auto` mode, as after any rejection.
-- A 200 with no live subtransactions still counts as "ignored": restore the memo, then create a flagged sibling.
+- Status: settled (was open decision 2). When YNAB answers a split-in-place update with live subtransactions that differ from the request, the writer restores the memo (and category if changed), does not flag it, records nothing, and returns an error naming the transaction. The original may hold an unverified split, so check it by hand. Split-in-place is switched off for the rest of the run in `auto` mode, as after any rejection.
+- A 200 with no live subtransactions still counts as "ignored": restore the memo, then flag it for a manual split.
 
 ## First live run and the LLM default
 
@@ -129,7 +130,7 @@ call from John are collected under "Open decisions for John" near the end.
 - Seen live on 2026-10-09: Walmart's ledger can list an order as several card charges that the bank then posts as one amount, unpredictably. One order's 7 charges came through as 5 single bank transactions plus one $97.72 transaction paying the other two; another order's 4 charges came through as a single $212.18. The one-to-one matcher found no single amounts, so the tool pre-staged every piece, and YNAB can never merge a staged piece with a combined bank transaction: the pieces became duplicates.
 - Matching: after single matches, `matcher.MatchCombined` looks for a transaction equal to the sum of two or more of the order's still-unmatched charges, with the same candidate rules as a single match and the transaction date inside every member's window. Only unambiguous fits count: the transaction fits exactly one subset, that subset fits no other transaction, and no charge is in two fits; anything else is left unmatched. At most 12 charges are searched (every subset is tried).
 - Writing: the transaction is split (or categorized) by the categories for the summed amount, exactly like a single match; the memo marker uses the first member's key, and every member charge is recorded with that transaction ID and outcome, so a rerun reports each one as `already_processed`. Each summary row keeps its own charge's share and notes that it was paid together with the others.
-- Pre-staging: a charge from an order with more than one card charge is never pre-staged (`skipped`, not recorded, retried next run). Single-charge orders are pre-staged as before.
+- Unmatched members wait for the bank (`skipped`, not recorded, retried next run); since 2026-10-10 no charge is ever pre-staged.
 
 ## Splitting an order charged in pieces
 
@@ -143,7 +144,8 @@ call from John are collected under "Open decisions for John" near the end.
 
 ## Fallback shape and approval of tool-created transactions
 
-- Status: settled 2026-10-09 (were open decisions 3 and 5). Both keep the defaults the code already had.
+- Status: superseded 2026-10-10 by "Update only: no transaction creation". Kept for history: the tool no longer creates siblings or pre-staged transactions.
+- Was settled 2026-10-09 (were open decisions 3 and 5).
 - Fallback: when a charge cannot be split in place (`split_in_place: never`, or a 400 or ignored split), the writer creates a flagged, unapproved sibling split and flags the original (and marks its memo, see "needs_manual_match without the database"). Flag-only was rejected: it would make you type the split by hand. The sibling doubles the outflow until you merge or delete it. This path is rare now that split-in-place is verified to work.
 - Approval: transactions the tool creates (siblings and pre-staged charges) are unapproved, so they land in YNAB's review queue. Matched transactions keep their existing approval state.
 
@@ -152,7 +154,6 @@ call from John are collected under "Open decisions for John" near the end.
 Current defaults are what the code does today; none of these is implemented differently.
 
 4. Refunds in v1.1: look up which items were returned, or mirror the original order's split proportions. Default: refunds are reported as `skipped` and never changed.
-6. A reset command for a `needs_manual_match` database row, so a forced reprocess does not require editing SQLite by hand. Default: none; delete the `ynab_charges` row manually.
 7. Ctrl-C exit code: 1 today; 130 is the shell convention. Default: 1.
 9. Whether a dry run should avoid refreshing the local transaction cache. Avoiding it makes a dry run strictly read-only locally but costs a full fetch each time or a stale view. Default: it may refresh the cache.
 10. `last-used` and the delta cache. Current: a non-UUID `plan_id` bypasses the cache (one full read per run). Alternative: fingerprint the plan from the categories already fetched in the preflight (for example the ID of the internal "Inflow: Ready to Assign" category) and key the cache by it, restoring the delta for `last-used`. Default: bypass.
@@ -164,8 +165,7 @@ Behavior or safety items a user or maintainer should know; none blocks the manua
 - The transaction cache is used only with an explicit plan UUID; with `last-used` every run makes one full transactions read (see open decision 10).
 - Every run fetches every order in the `-days` window from Walmart (order plus ledger, 2s apart) before it can check the database, so a large window costs time and Walmart requests even when nothing is new.
 - Order listing is capped at 25 pages of 20 and the cap is hit silently (no warning). Whether Walmart's `MinTimestamp` filter works is unverified; a second client-side filter drops summaries whose delivered date parses and is older than the window.
-- A charge that hits a YNAB 429 before any write gets no row; only the "stopped early" block names it. The YNAB transactions are loaded before an order's items are categorized, so a failed load fails the order's pending charges without spending LLM tokens (those rows show no proposed split). A forced rerun of a `needs_manual_match` order still costs one LLM call.
-- With `-force`, the refusal for a `needs_manual_match` charge persists after the sibling is deleted in YNAB, until its `ynab_charges` row is removed by hand.
+- A charge that hits a YNAB 429 before any write gets no row; only the "stopped early" block names it. The YNAB transactions are loaded before an order's items are categorized, so a failed load fails the order's pending charges without spending LLM tokens (those rows show no proposed split). A forced rerun of a written order still costs one LLM call.
 - One unpriced item makes its whole order fail (safe; to be confirmed against real data). Refunded items are tracked only from the order's items, with no consumer yet.
 - `import-curl` reads only the `walmart:` section (no `YNAB_TOKEN` needed, and the rest of the config is not validated), silently replaces an existing cookie store (that is the refresh workflow), and leaves an empty 0700 directory behind when the capture is bad.
 - `.gitignore` covers cURL captures named `curl*.txt` or `*.curl`; a capture saved under any other name holds live cookies and would not be ignored.

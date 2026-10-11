@@ -45,9 +45,10 @@ place real implementations are assembled.
    other non-UUID it is a full read and the cache is not touched. Then
    categorize the order's items once through the LLM and split the CHARGE
    amount across categories.
-6. Writer per charge: match, then categorize, split in place, create a flagged
-   sibling, pre-stage, or skip; record the finished outcome in SQLite after the
-   YNAB write succeeded.
+6. Writer per charge: match, then categorize, split in place, flag for a
+   manual split, or skip; record the finished outcome in SQLite after the YNAB
+   write succeeded. Every write updates a transaction the bank imported; the
+   tool never creates one.
 7. Print the summary (stdout; logs go to stderr). A YNAB 429 or a Walmart block
    stops the run early with the partial summary.
 

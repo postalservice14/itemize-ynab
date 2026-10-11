@@ -129,13 +129,20 @@ ynab:
 }
 
 func TestValidate_acceptsEveryAllowedValue(t *testing.T) {
-	for _, mode := range []string{"auto", "always", "never"} {
+	for _, mode := range []string{"auto", "always"} {
 		for _, color := range []string{"red", "orange", "yellow", "green", "blue", "purple"} {
 			yaml := fmt.Sprintf("ynab:\n  token: a\n  split_in_place: %s\n  flag_color: %s\n", mode, color)
 			_, err := config.Parse([]byte(yaml), env(nil))
 			require.NoError(t, err, "%s/%s", mode, color)
 		}
 	}
+}
+
+func TestValidate_rejectsSplitInPlaceNever(t *testing.T) {
+	_, err := config.Parse([]byte("ynab:\n  token: a\n  split_in_place: never\n"), env(nil))
+
+	require.ErrorIs(t, err, config.ErrInvalid)
+	assert.Contains(t, err.Error(), `ynab.split_in_place "never" must be one of auto, always`)
 }
 
 func TestSecret_redactsEverywhere(t *testing.T) {

@@ -104,18 +104,3 @@ func TestCombineJobs_sumsTheMembersUnderTheFirstKey(t *testing.T) {
 	assert.Equal(t, []order.Charge{a.Charge, b.Charge}, job.Members)
 	assert.Equal(t, splits, job.Splits)
 }
-
-func TestProcess_multiChargeOrder_notStaged(t *testing.T) {
-	h := newHarness(t)
-	job := singleJob("k1", 1234, date(10, 7), acctA)
-	job.OrderCharges = 2
-
-	res, err := h.writer(t, nil).Process(context.Background(), job)
-
-	require.NoError(t, err)
-	assert.Equal(t, Skipped, res.Outcome)
-	assert.Contains(t, res.Note, "several charges")
-	assert.Zero(t, h.srv.WriteCount())
-	_, ok := h.recorded(t, "k1")
-	assert.False(t, ok, "skips are retried next run")
-}

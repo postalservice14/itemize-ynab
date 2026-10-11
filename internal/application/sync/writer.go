@@ -15,17 +15,14 @@ import (
 	"github.com/postalservice14/itemize-ynab/internal/infrastructure/storage"
 )
 
-// DefaultPayee is the payee name of sibling and staged transactions.
-const DefaultPayee = "Walmart"
-
-// DefaultStageMaxAgeDays is how old a charge may be and still be pre-staged.
-const DefaultStageMaxAgeDays = 10
+// noMatchNote explains a charge with no bank transaction to write to yet. It is
+// skipped, never created, and retried next run.
+const noMatchNote = "no matching bank transaction yet; retried next run"
 
 // WriteAPI is the slice of the YNAB client the writer needs; *ynab.Client
-// satisfies it.
+// satisfies it. It can only update existing transactions.
 type WriteAPI interface {
 	UpdateTransaction(ctx context.Context, id string, t ynab.SaveTransaction) (ynab.Transaction, error)
-	CreateTransaction(ctx context.Context, t ynab.SaveTransaction) (ynab.Transaction, error)
 }
 
 // ChargeStore is the slice of the store the writer needs; *storage.Store
@@ -37,29 +34,17 @@ type ChargeStore interface {
 
 // Config tunes the writer.
 type Config struct {
-	// FlagColor flags the sibling split and the original it stands in for.
-	FlagColor string
-	// Payee names sibling and staged transactions; default DefaultPayee.
-	Payee        string
+	// FlagColor flags a transaction that needs a manual split.
+	FlagColor    string
 	MatchOptions matcher.Options
 	// SplitInPlace is the split-in-place policy; empty means ModeAuto.
 	SplitInPlace Mode
 	// DryRun decides every outcome but writes nothing to YNAB or the store.
 	DryRun bool
-	// Force reprocesses charges the store already records, except
-	// needs_manual_match ones (Skipped: a rerun would create a duplicate
-	// sibling, because the flagged original carries no marker). For the other
-	// outcomes only the memo marker protects against a duplicate write: the
-	// matcher excludes marked transactions. Force does not protect a
-	// needs_manual_match charge whose record is gone (a lost database).
+	// Force reprocesses charges the store already records. Only the memo
+	// marker then protects against a duplicate write: the matcher excludes
+	// marked transactions.
 	Force bool
-	// StageMaxAgeDays bounds pre-staging; default DefaultStageMaxAgeDays.
-	StageMaxAgeDays int
-	// LoadedFrom is the lower date bound of the transactions the writer was
-	// given. A charge whose match window starts before it is not pre-staged:
-	// the same-amount safety check cannot see the missing days. Zero means
-	// no bound.
-	LoadedFrom time.Time
 	// Now is the clock; required.
 	Now    func() time.Time
 	Logger *slog.Logger
@@ -116,12 +101,6 @@ func withConfigDefaults(cfg Config) (Config, error) {
 		return cfg, err
 	}
 	cfg.SplitInPlace = mode
-	if cfg.Payee == "" {
-		cfg.Payee = DefaultPayee
-	}
-	if cfg.StageMaxAgeDays <= 0 {
-		cfg.StageMaxAgeDays = DefaultStageMaxAgeDays
-	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
@@ -153,35 +132,29 @@ func (w *Writer) Process(ctx context.Context, job ChargeJob) (Result, error) {
 		w.log.Info("charge skipped", "key", res.Key, "reason", res.Note)
 		return res, nil
 	default:
-		return w.stage(ctx, job, res)
+		res.Outcome, res.Note = Skipped, noMatchNote
+		if job.Charge.Date.IsZero() {
+			res.Note = "no usable date for the charge"
+		}
+		w.log.Info("charge skipped", "key", res.Key, "reason", res.Note)
+		return res, nil
 	}
 }
 
 // checkProcessed consults the idempotency record. done means stop with res.
-// Without Force a recorded charge is AlreadyProcessed. With Force a recorded
-// charge is processed again (the memo marker still keeps marked transactions
-// out of matching), except a needs_manual_match one: its original is flagged
-// but carries no marker, so a rerun would create a duplicate sibling.
+// Without Force a recorded charge is AlreadyProcessed; with Force it is
+// processed again, and the memo marker keeps marked transactions out of
+// matching.
 func (w *Writer) checkProcessed(ctx context.Context, res Result) (Result, bool, error) {
-	rec, found, err := w.store.GetCharge(ctx, res.Key)
+	_, found, err := w.store.GetCharge(ctx, res.Key)
 	if err != nil {
 		return res, true, fmt.Errorf("charge %s: cannot check whether it was already processed: %w", res.Key, err)
 	}
-	switch {
-	case !found:
-		return res, false, nil
-	case !w.cfg.Force:
+	if found && !w.cfg.Force {
 		res.Outcome = AlreadyProcessed
 		return res, true, nil
-	case rec.Outcome == string(NeedsManualMatch):
-		res.Outcome = Skipped
-		res.Note = fmt.Sprintf("not forced: sibling split %s already exists for this charge and re-running "+
-			"would create a duplicate sibling; resolve or delete the sibling in YNAB first", rec.YNABTxnID)
-		w.log.Warn("forced rerun refused for a needs_manual_match charge", "key", res.Key, "sibling_id", rec.YNABTxnID)
-		return res, true, nil
-	default:
-		return res, false, nil
 	}
+	return res, false, nil
 }
 
 func (w *Writer) matcherCharge(job ChargeJob) matcher.Charge {
@@ -194,10 +167,8 @@ func (w *Writer) matcherCharge(job ChargeJob) matcher.Charge {
 }
 
 // record stores a finished outcome after a successful write, once per charge
-// the job stands for. A failure is only reported: for a transaction that
-// carries the memo marker, the marker still keeps it out of matching. A
-// sibling split is different: the original it stands in for carries no
-// marker, so a rerun creates a second sibling.
+// the job stands for. A failure is only reported: every written transaction
+// carries the memo marker, which still keeps it out of matching.
 func (w *Writer) record(ctx context.Context, job ChargeJob, res *Result) {
 	charges := job.Members
 	if len(charges) == 0 {
@@ -216,19 +187,13 @@ func (w *Writer) record(ctx context.Context, job ChargeJob, res *Result) {
 }
 
 func (w *Writer) logRecord(key string, err error, res *Result) {
-	switch {
-	case err == nil:
+	if err == nil {
 		w.log.Info("charge written", "key", key, "outcome", res.Outcome, "txn_id", res.TxnID)
-	case res.Outcome == NeedsManualMatch:
-		w.log.Warn("sibling split created but not recorded locally; a rerun will create a second sibling, delete one by hand",
-			"key", key, "sibling_id", res.TxnID, "error", err)
-		res.Note = joinNotes(res.Note, fmt.Sprintf("sibling %s exists in YNAB but was not recorded locally: "+
-			"a rerun will create a second sibling, so delete one of them by hand (%v)", res.TxnID, err))
-	default:
-		w.log.Warn("charge written to YNAB but not recorded locally; the memo marker still prevents a duplicate",
-			"key", key, "txn_id", res.TxnID, "error", err)
-		res.Note = joinNotes(res.Note, "not recorded locally: "+err.Error())
+		return
 	}
+	w.log.Warn("charge written to YNAB but not recorded locally; the memo marker still prevents a duplicate",
+		"key", key, "txn_id", res.TxnID, "error", err)
+	res.Note = joinNotes(res.Note, "not recorded locally: "+err.Error())
 }
 
 // writeErr wraps a failed YNAB write with the charge and transaction. The

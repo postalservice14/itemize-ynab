@@ -26,7 +26,7 @@ ynab:
   match_window:
     days_before: 2
     days_after: 10
-  split_in_place: auto          # auto | always | never
+  split_in_place: auto          # auto | always
 
 database:
   path: itemize-ynab.db         # SQLite file (default itemize-ynab.db). A relative path

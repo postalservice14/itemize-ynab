@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -184,43 +184,14 @@ func TestUpdateTransaction_plainUpdateOmitsCategoryUnlessSet(t *testing.T) {
 	assert.JSONEq(t, `{"transaction":{"memo":"only memo","category_id":"c9"}}`, string(reqs[1].Body))
 }
 
-func TestCreateTransaction_postsBodyAndDecodesResponse(t *testing.T) {
-	srv := ynabtest.New(t)
-	srv.On("POST", "/plans/plan-1/transactions", Response201())
-	amount := int64(-185830)
-	approved := false
-	flag := "purple"
-
-	tx, err := newTestClient(t, srv).CreateTransaction(context.Background(), ynab.SaveTransaction{
-		AccountID: "a1", Date: ynab.NewDate(2026, time.October, 2), Amount: &amount,
-		PayeeName: "Walmart", Memo: ptr("[itemize:k]"), Approved: &approved, FlagColor: &flag,
-		Cleared: "uncleared",
-		SubTransactions: []ynab.SaveSubTransaction{
-			{Amount: -100000, CategoryID: "c1"}, {Amount: -85830, CategoryID: "c2"},
-		},
-	})
-
-	require.NoError(t, err)
-	assert.Equal(t, "new-1", tx.ID)
-	reqs := srv.Calls("POST", "/plans/plan-1/transactions")
-	require.Len(t, reqs, 1)
-	assert.JSONEq(t, `{"transaction":{
-		"account_id":"a1","date":"2026-10-02","amount":-185830,"payee_name":"Walmart",
-		"memo":"[itemize:k]","approved":false,"flag_color":"purple","cleared":"uncleared",
-		"category_id":null,
-		"subtransactions":[{"amount":-100000,"category_id":"c1"},{"amount":-85830,"category_id":"c2"}]}}`,
-		string(reqs[0].Body))
+// The tool only updates transactions the bank imported; it must never be able
+// to create one.
+func TestClient_cannotCreateTransactions(t *testing.T) {
+	typ := reflect.TypeFor[*ynab.Client]()
+	for i := range typ.NumMethod() {
+		assert.False(t, strings.HasPrefix(typ.Method(i).Name, "Create"), typ.Method(i).Name)
+	}
 }
-
-func Response201() ynabtest.Response {
-	return ynabtest.Response{Status: http.StatusCreated, Body: map[string]any{"data": map[string]any{
-		"transaction_ids":  []string{"new-1"},
-		"transaction":      map[string]any{"id": "new-1", "date": "2026-10-02", "amount": -185830},
-		"server_knowledge": 3,
-	}}}
-}
-
-func ptr[T any](v T) *T { return &v }
 
 func TestRateLimited_429IsSentinelAndNeverRetries(t *testing.T) {
 	srv := ynabtest.New(t)

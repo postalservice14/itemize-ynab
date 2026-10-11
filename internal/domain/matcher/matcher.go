@@ -135,24 +135,6 @@ func Match(charge Charge, txns []Txn, claimed map[string]bool, opts Options) Res
 	}
 }
 
-// HasAmountInAccount reports whether ANY non-deleted transaction in the
-// charge's account has exactly the charge's amount within the date window,
-// regardless of payee, split state, marker or claims. It backs the safety check
-// before pre-staging a transaction. An empty charge.AccountID means no account
-// restriction, as in Match.
-func HasAmountInAccount(charge Charge, txns []Txn, opts Options) bool {
-	opts = withDefaults(opts)
-	for _, t := range txns {
-		if t.Deleted || !accountOK(charge, t) {
-			continue
-		}
-		if t.AmountMilli == -charge.AmountCents*milliPerCent && inWindow(charge.Date, t.Date, opts) {
-			return true
-		}
-	}
-	return false
-}
-
 func withDefaults(opts Options) Options {
 	if opts.PayeeRE == nil {
 		opts.PayeeRE = defaultPayeeRE

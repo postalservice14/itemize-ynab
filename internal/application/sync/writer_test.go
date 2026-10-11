@@ -172,7 +172,7 @@ func TestProcess_identicalCharges_oneTransaction_secondSkipped(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, Categorized, res[0].Outcome)
 	assert.Equal(t, Skipped, res[1].Outcome)
-	assert.Contains(t, res[1].Note, "same amount")
+	assert.Equal(t, noMatchNote, res[1].Note)
 	assert.Equal(t, 1, h.srv.WriteCount())
 	_, recorded := h.recorded(t, "walmart:o1:1234:2")
 	assert.False(t, recorded)
@@ -213,7 +213,7 @@ func TestProcess_ineligibleTransactions_neverTouched(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, Skipped, res.Outcome)
-	assert.Contains(t, res.Note, "same amount")
+	assert.Equal(t, noMatchNote, res.Note)
 	assert.Empty(t, h.srv.Requests())
 }
 

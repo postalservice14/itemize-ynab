@@ -70,7 +70,7 @@ func TransactionsData(serverKnowledge int64, txns ...any) map[string]any {
 }
 
 // TransactionData builds the data payload of a single-transaction reply
-// (GET, PUT and POST on one transaction).
+// (GET and PUT on one transaction).
 func TransactionData(txn any) map[string]any {
 	return map[string]any{"transaction": txn, "server_knowledge": 1}
 }

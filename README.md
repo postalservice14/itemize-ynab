@@ -3,15 +3,16 @@
 A personal command-line tool that splits Walmart card charges in YNAB by item
 category. It reads your Walmart orders (and the card charges Walmart actually
 made for them), asks an LLM to put each item in one of your YNAB categories,
-finds the matching YNAB transaction, and categorizes or splits it. Each category
+finds the matching YNAB transaction your bank imported, and categorizes or
+splits it. It never creates a transaction. Each category
 gets its share of what the order was charged (tax, fees and tip spread in
 proportion to its item subtotal), and when Walmart charges an order in pieces
 each piece is filled with as few categories as possible (section "How an
 order's charges are split" below). Runs are repeatable:
 a charge already processed is guarded against a second write by its record in
 the local database and by a marker in the transaction's memo. The known gaps (a
-lost database while `needs_manual_match` siblings are unresolved, a write that
-times out after YNAB applied it, and `-force`) are described in section 8.
+write that times out after YNAB applied it, and `-force`) are described in
+section 8.
 
 What it deliberately does not do (v1):
 
@@ -68,12 +69,12 @@ unless your plan has a category named "Pets": change or remove it.
 | `ynab.token` | required | Set to `"${YNAB_TOKEN}"`. Secrets stay in the environment. |
 | `ynab.plan_id` | `last-used` | YNAB plan (budget) UUID, or `last-used`. See the note below. |
 | `ynab.flag_color` | `purple` | Flag for anything that needs a human. One of red, orange, yellow, green, blue, purple. |
-| `ynab.accounts` | none | Map of card last 4 digits (quoted) to a YNAB account ID. Enables pre-staging and restricts matching to that account. |
+| `ynab.accounts` | none | Map of card last 4 digits (quoted) to a YNAB account ID. Restricts matching to that account. |
 | `ynab.category_overrides` | none | Map of categorizer output name to an existing YNAB category name, applied after categorization. |
 | `ynab.tip_category` | none | YNAB category for a driver tip that Walmart charges on its own. Unset, the tip is split in proportion to the items' categories. Must be an eligible category. |
 | `ynab.match_window.days_before` | 2 | How many days before the charge date a YNAB transaction may sit. |
 | `ynab.match_window.days_after` | 10 | How many days after. |
-| `ynab.split_in_place` | `auto` | `auto`, `always` or `never`; see below. |
+| `ynab.split_in_place` | `auto` | `auto` or `always`; see below. |
 | `database.path` | `itemize-ynab.db` | SQLite file. A relative path resolves against the config file's directory, not the working directory. |
 | `walmart.cookie_file` | `~/.walmart-api/cookies.json` | Walmart cookie store. A leading `~` is the home directory. |
 
@@ -99,9 +100,13 @@ the changes since the last run.
 matched transaction itself.
 
 - `auto`: try it; after the first rejection in a run, stop trying for the rest
-  of that run and use the sibling path. The next run tries again.
-- `always`: try it on every charge; a rejected charge still falls back to the sibling path.
-- `never`: always use the sibling path (a flagged, user-entered split next to the original).
+  of that run and flag later multi-category charges for a manual split
+  (`needs_manual_match`). The next run tries again.
+- `always`: try it on every charge; a rejected charge is still flagged for a
+  manual split.
+
+The earlier `never` value (always create a separate split next to the original)
+is gone with transaction creation, and is now a config error.
 
 `probe-split` showed on 2026-10-09 that YNAB accepts an in-place split on a plain card transaction (section 4). YNAB cannot un-split it through the API.
 
@@ -304,12 +309,9 @@ with a note, because acceptance cannot be known without writing.
 `-force` skips the database check for charges already recorded, so they are
 processed again. It does not turn off the memo-marker protection: a transaction
 already carrying `[itemize:...]` is invisible to matching, so a forced rerun of a
-charge that was categorized, split or staged normally ends `skipped`. A charge
-recorded as `needs_manual_match` is refused outright while its database row
-exists (`skipped`, with a note naming the existing sibling), because a rerun
-would create a second sibling. Resolve or delete the sibling in YNAB first, and
-because the refusal depends on the database row, remove its `ynab_charges` row
-too before reprocessing.
+charge that was categorized, split or flagged normally ends `skipped`. To have
+a flagged `needs_manual_match` transaction tried again, remove `[itemize:...]`
+from its memo in YNAB, then run with `-force`.
 
 ## 5. Outcomes
 
@@ -320,8 +322,7 @@ produces two rows.
 |---|---|
 | `categorized` | The matched transaction had items in one category: its category was set and the marker appended to its memo (existing memo text is kept). |
 | `split_in_place` | The matched transaction was turned into a split and YNAB's reply was checked to hold exactly that split. |
-| `needs_manual_match` | A flagged, unapproved, user-entered split (payee Walmart, same account, date and amount, marker memo) was created next to the matched transaction, and the original was flagged. Until you resolve it the outflow appears twice. You merge or delete by hand in YNAB; the tool never does. Reached with `split_in_place: never`, or after a rejected in-place split. |
-| `staged_for_import` | No matching transaction yet, so an unapproved user-entered transaction was created in the mapped account, to be merged when the bank import arrives. Only for orders with a single card charge. |
+| `needs_manual_match` | YNAB rejected (or silently ignored) the in-place split, so the matched transaction was flagged and the marker appended to its memo. Nothing else changed: split it by hand in YNAB. The summary always lists the planned split under the row, even without `-verbose`. |
 | `skipped` | Nothing written, nothing recorded, so the charge is retried next run. See reasons below. |
 | `already_processed` | The database already has this charge. Nothing written, no LLM call. |
 | `failed` | The charge or order could not be processed. Any failed row makes the exit code 2. |
@@ -336,14 +337,11 @@ transaction` and shows the same YNAB transaction ID.
 - A ledger entry that is not a card charge: `gift card`, `non-card payment`,
   `refund`, `zero amount`. Also `order has no card charges`.
 - `ambiguous match: candidates ... tie across accounts`.
-- `no matching transaction; not pre-staged: <reason>`, where the reason is: no
-  account mapping for the card; no usable date for the charge; charge date is in
-  the future; charge is too old to pre-stage (10 days or more, fixed); the
-  order has several charges, which the bank may post as one amount (waiting for
-  the bank transaction); charge date window starts before the loaded transaction
-  range (widen `-days` or re-run); or a transaction with the same amount already
-  exists in the account.
-- `not forced: sibling split ... already exists` (a refused `-force`).
+- `no matching bank transaction yet; retried next run`: the bank has not
+  imported it yet (or it sits outside the match window, in an unmapped account,
+  or under a payee the pattern misses). The tool never creates the transaction;
+  it waits for the import.
+- `no usable date for the charge`.
 
 `failed` reasons: an order that could not be fetched, a categorization failure
 (LLM error, invalid reply after one repair attempt, order without items), a
@@ -466,27 +464,26 @@ lock uses `flock`, so it needs macOS, Linux or a BSD; on other platforms
 ## 8. Safety model and data
 
 What is written to YNAB: a category and memo on matched transactions; a split
-(subtransactions) on matched transactions; new unapproved user-entered
-transactions (siblings and staged ones); and a flag on originals of siblings. It
-never deletes a transaction and never approves one. No request leaves with a
-split that does not sum exactly to its parent; the check is local, before sending.
+(subtransactions) on matched transactions; and a flag on a matched transaction
+that needs a manual split. Every write is an update to a transaction your bank
+imported. It never creates a transaction (the YNAB client has no create
+method), never deletes one, never approves one, and never changes an imported
+transaction's account, date, amount, payee or cleared state. No request leaves
+with a split that does not sum exactly to its parent; the check is local, before
+sending.
 
 Idempotency has two layers: the SQLite record of each processed charge, and the
 `[itemize:...]` marker in the memo. A charge is recorded only after the YNAB
-write succeeded. If recording fails, the marker still prevents a duplicate for a
-categorized, split or staged charge. A sibling's flagged original
-gets the marker in its memo too, so it is hidden from matching even without the
-database row. The one exception is a sibling POST that timed out after YNAB
-applied it: the original is then unmarked and a rerun creates a second sibling.
+write succeeded. If recording fails, the marker still prevents a duplicate: a
+categorized, split or flagged transaction carries it, so it is hidden from
+matching even without the database row.
 
 Known gaps:
 
-- A lost database while `needs_manual_match` siblings are unresolved (below).
 - Ambiguous write timeouts: the YNAB client gives up after 30 seconds, but a
-  POST or PUT can time out after YNAB applied it. The charge is then reported
-  `failed` and not recorded; a rerun skips a marked transaction, but a sibling
-  POST that timed out after being applied is unrecorded and a rerun creates a
-  second one. Check `failed` rows that mention a timeout in YNAB before rerunning.
+  PUT can time out after YNAB applied it. The charge is then reported `failed`
+  and not recorded; the marker the PUT wrote makes a rerun skip it. Check
+  `failed` rows that mention a timeout in YNAB.
 - `-force` (section 4).
 
 - Database: `database.path` (default `itemize-ynab.db` beside the config file; `*.db` is git-ignored).
@@ -495,17 +492,14 @@ Known gaps:
   `-shm` files appear next to it. Back it up with
   `sqlite3 itemize-ynab.db ".backup backup.db"` or by copying all three files
   while no run is active.
-- Deleting the database is mostly safe: markers keep categorized, split and
-  staged charges from being written again, and the transaction cache is rebuilt
-  with one full YNAB fetch. The flagged original of a `needs_manual_match` carries the
-  marker too, so it is not matched again. Only a sibling POST that timed out
-  after YNAB applied it can still lead to a second sibling.
+- Deleting the database is safe: markers keep categorized, split and flagged
+  transactions from being written again, and the transaction cache is rebuilt
+  with one full YNAB fetch.
 - Rate limits: YNAB allows 200 requests per hour per token. A run typically
   makes 3 YNAB reads (categories; accounts when accounts are mapped; one
-  transactions list) plus typically 1 or 2 writes per charge (a sibling is 2:
-  the sibling POST and the flag PUT). A rejected in-place split costs 3 to 4
-  writes (the split PUT, a memo restore PUT when YNAB ignored the split, the
-  sibling POST, the flag PUT), and a failed delta fetch costs one extra full
+  transactions list) plus 1 write per charge. A rejected in-place split costs
+  2 to 3 writes (the split PUT, a memo restore PUT when YNAB ignored the split,
+  the flag PUT), and a failed delta fetch costs one extra full
   transactions read. The YNAB client never retries or sleeps. Walmart requests
   are spaced 2 seconds apart, and the Walmart client retries a ledger 429 up to
   3 times with 5s, 10s, 20s backoff.
@@ -513,9 +507,6 @@ Known gaps:
   first run fetches transactions since the start of the window; later runs fetch
   only changes and merge them into the cache. With `last-used` (or any non-UUID
   `plan_id`) the cache is bypassed and every run makes one full read.
-- Window edge: transactions are loaded from `days_before + 1` days before the
-  `-days` window. A charge whose own match window starts earlier is `skipped`
-  rather than pre-staged, because a same-amount transaction could exist unseen.
 - Overlapping runs: serialized by the run lock (section 7).
 - Identical charges: see the tie note in section 5.
 - Secrets: the YNAB token, Walmart cookies and LLM keys are redacted from logs,

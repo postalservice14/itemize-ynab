@@ -59,13 +59,13 @@ func TestToMatcherTxn(t *testing.T) {
 }
 
 func TestParseMode(t *testing.T) {
-	cases := map[string]Mode{"": ModeAuto, "auto": ModeAuto, "always": ModeAlways, "never": ModeNever}
+	cases := map[string]Mode{"": ModeAuto, "auto": ModeAuto, "always": ModeAlways}
 	for in, want := range cases {
 		got, err := ParseMode(in)
 		require.NoError(t, err, in)
 		assert.Equal(t, want, got, in)
 	}
-	for _, bad := range []string{"sometimes", "AUTO", "auto\n"} {
+	for _, bad := range []string{"sometimes", "AUTO", "auto\n", "never"} {
 		_, err := ParseMode(bad)
 		assert.ErrorContains(t, err, "must be one of", bad)
 	}
@@ -91,8 +91,6 @@ func TestNewWriter_appliesDefaults(t *testing.T) {
 	h := newHarness(t)
 	w, err := NewWriter(h.api, h.store, nil, h.config(func(c *Config) { c.Logger = nil }))
 	require.NoError(t, err)
-	assert.Equal(t, DefaultPayee, w.cfg.Payee)
-	assert.Equal(t, DefaultStageMaxAgeDays, w.cfg.StageMaxAgeDays)
 	assert.Equal(t, ModeAuto, w.cfg.SplitInPlace)
 	assert.NotNil(t, w.log)
 }

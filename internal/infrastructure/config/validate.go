@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	validSplitModes = []string{"auto", "always", "never"}
+	validSplitModes = []string{"auto", "always"}
 	validFlagColors = []string{"red", "orange", "yellow", "green", "blue", "purple"}
 	cardLast4       = regexp.MustCompile(`^[0-9]{4}$`)
 )

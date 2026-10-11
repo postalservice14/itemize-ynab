@@ -143,20 +143,16 @@ type TransactionsResult struct {
 	ServerKnowledge int64
 }
 
-// SaveTransaction is the body of a create (POST) or update (PUT). Only the
-// fields that are set are sent, so an update can change just the memo.
+// SaveTransaction is the body of an update (PUT) to an existing transaction.
+// Only the fields that are set are sent, so an update can change just the
+// memo. It has no account, date, amount, payee, cleared or approved field: the
+// tool never changes what the bank imported, only how it is categorized.
 type SaveTransaction struct {
-	AccountID  string
-	Date       Date
-	Amount     *int64
-	PayeeName  string
 	CategoryID *string
 	// ClearCategory sends category_id as an explicit null (uncategorized).
 	// It is implied when SubTransactions are set.
 	ClearCategory bool
 	Memo          *string
-	Cleared       string
-	Approved      *bool
 	FlagColor     *string
 	// SubTransactions turns the transaction into a split. When any are set,
 	// category_id is sent as an explicit null, as YNAB requires for a split.
@@ -172,14 +168,8 @@ type SaveSubTransaction struct {
 }
 
 type wireSave struct {
-	AccountID       string           `json:"account_id,omitempty"`
-	Date            string           `json:"date,omitempty"`
-	Amount          *int64           `json:"amount,omitempty"`
-	PayeeName       string           `json:"payee_name,omitempty"`
 	CategoryID      json.RawMessage  `json:"category_id,omitempty"`
 	Memo            *string          `json:"memo,omitempty"`
-	Cleared         string           `json:"cleared,omitempty"`
-	Approved        *bool            `json:"approved,omitempty"`
 	FlagColor       *string          `json:"flag_color,omitempty"`
 	SubTransactions []wireSaveSubTxn `json:"subtransactions,omitempty"`
 }
@@ -193,13 +183,7 @@ type wireSaveSubTxn struct {
 // MarshalJSON implements json.Marshaler.
 func (s SaveTransaction) MarshalJSON() ([]byte, error) {
 	w := wireSave{
-		AccountID: s.AccountID,
-		Date:      s.Date.String(),
-		Amount:    s.Amount,
-		PayeeName: s.PayeeName,
 		Memo:      s.Memo,
-		Cleared:   s.Cleared,
-		Approved:  s.Approved,
 		FlagColor: s.FlagColor,
 	}
 	switch {

@@ -76,8 +76,8 @@ func TestRunOrchestrator_multiChargeOrder_unmatchedChargesWaitForTheBank(t *test
 
 	require.NoError(t, err)
 	assert.Equal(t, []Status{StatusSkipped, StatusSkipped, StatusSkipped}, statuses(sum.Rows))
-	assert.Contains(t, sum.Rows[0].Note, "several charges")
-	assert.Zero(t, h.srv.WriteCount(), "nothing is pre-staged")
+	assert.Equal(t, noMatchNote, sum.Rows[0].Note)
+	assert.Zero(t, h.srv.WriteCount(), "nothing is created")
 }
 
 // orderTip is a delivery charged as $50.00 plus a separate $5.00 driver tip.

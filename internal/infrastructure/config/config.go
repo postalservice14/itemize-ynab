@@ -59,7 +59,7 @@ type YNAB struct {
 	ExcludeCategories []string          // YNAB category names the categorizer may never use
 	TipCategory       string            // YNAB category for a separately charged tip; "" spreads it
 	MatchWindow       MatchWindow
-	SplitInPlace      string // auto | always | never
+	SplitInPlace      string // auto | always
 }
 
 // MatchWindow is how far a YNAB transaction may sit from the order date.

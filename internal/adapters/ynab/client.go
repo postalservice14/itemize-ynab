@@ -254,24 +254,3 @@ func (c *Client) UpdateTransaction(ctx context.Context, id string, t SaveTransac
 	}
 	return data.Transaction, nil
 }
-
-// CreateTransaction sends POST /transactions with one transaction and returns
-// it as saved.
-func (c *Client) CreateTransaction(ctx context.Context, t SaveTransaction) (Transaction, error) {
-	var data struct {
-		Transaction  *Transaction  `json:"transaction"`
-		Transactions []Transaction `json:"transactions"`
-	}
-	body := map[string]any{"transaction": t}
-	if err := c.do(ctx, http.MethodPost, c.planPath("/transactions"), nil, body, &data); err != nil {
-		return Transaction{}, err
-	}
-	switch {
-	case data.Transaction != nil:
-		return *data.Transaction, nil
-	case len(data.Transactions) > 0:
-		return data.Transactions[0], nil
-	default:
-		return Transaction{}, errors.New("ynab: create transaction: response contained no transaction")
-	}
-}

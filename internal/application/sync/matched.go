@@ -17,7 +17,7 @@ func (w *Writer) processMatched(ctx context.Context, job ChargeJob, orig ynab.Tr
 		return w.categorize(ctx, job, orig, catID, res)
 	}
 	if !w.splitInPlaceAllowed() {
-		return w.sibling(ctx, job, orig, res)
+		return w.flagForManualSplit(ctx, job, orig, res)
 	}
 	return w.splitInPlace(ctx, job, orig, res)
 }
@@ -39,14 +39,7 @@ func (w *Writer) categorize(ctx context.Context, job ChargeJob, orig ynab.Transa
 }
 
 func (w *Writer) splitInPlaceAllowed() bool {
-	switch w.cfg.SplitInPlace {
-	case ModeNever:
-		return false
-	case ModeAuto:
-		return !w.splitOff
-	default:
-		return true
-	}
+	return w.cfg.SplitInPlace != ModeAuto || !w.splitOff
 }
 
 // splitFailed applies the split_in_place mode after a rejection: auto
@@ -59,12 +52,13 @@ func (w *Writer) splitFailed() {
 }
 
 // splitInPlace turns the matched transaction into a split and verifies that
-// YNAB saved it. A 400 or a silently ignored split falls back to a sibling.
+// YNAB saved it. A 400 or a silently ignored split flags the transaction for
+// a manual split instead.
 func (w *Writer) splitInPlace(ctx context.Context, job ChargeJob, orig ynab.Transaction, res Result) (Result, error) {
 	if w.cfg.DryRun {
 		res.Outcome = SplitInPlace
 		res.TxnID = orig.ID
-		res.Note = "assumes split-in-place accepted; a rejection would create a flagged sibling split instead"
+		res.Note = "assumes split-in-place accepted; a rejection would flag the transaction for a manual split instead"
 		return res, nil
 	}
 	newMemo := parentMemo(orig.Memo, job)
@@ -96,13 +90,13 @@ func (w *Writer) splitInPlace(ctx context.Context, job ChargeJob, orig ynab.Tran
 	default:
 		return res, writeErr(res.Key, "split in place", orig.ID, err)
 	}
-	return w.sibling(ctx, job, orig, res)
+	return w.flagForManualSplit(ctx, job, orig, res)
 }
 
 // splitMismatch handles a 200 whose live subtransactions differ from the
-// request. The original now holds a split nobody verified, so no sibling is
-// created (the amount would be counted twice) and nothing is recorded; the
-// memo is restored and the error names the transaction for a manual fix.
+// request. The original now holds a split nobody verified, so nothing is
+// recorded; the memo is restored and the error names the transaction for a
+// manual fix.
 func (w *Writer) splitMismatch(ctx context.Context, orig, saved ynab.Transaction, key string) error {
 	w.log.Warn("split-in-place saved a different split than requested", "key", key, "txn_id", orig.ID)
 	w.splitFailed()
@@ -112,7 +106,7 @@ func (w *Writer) splitMismatch(ctx context.Context, orig, saved ynab.Transaction
 			key, orig.ID, memo.Marker(key), err)
 	}
 	return fmt.Errorf("charge %s: YNAB saved subtransactions that differ from the request on transaction %s; "+
-		"its memo was restored and no sibling was created - check its split by hand", key, orig.ID)
+		"its memo was restored - check its split by hand", key, orig.ID)
 }
 
 func hasLiveSubtransactions(saved ynab.Transaction) bool {

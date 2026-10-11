@@ -15,9 +15,8 @@ const (
 	StatusCategorized      = Status(Categorized)
 	StatusSplitInPlace     = Status(SplitInPlace)
 	StatusNeedsManualMatch = Status(NeedsManualMatch)
-	StatusStagedForImport  = Status(StagedForImport)
-	// StatusSkipped is not a failure: no match, ambiguous match, refund,
-	// gift card, an order without card charges, or a refused forced rerun.
+	// StatusSkipped is not a failure: no match yet, ambiguous match, refund,
+	// gift card, or an order without card charges.
 	StatusSkipped          = Status(Skipped)
 	StatusAlreadyProcessed = Status(AlreadyProcessed)
 	// StatusFailed is a charge (or order) that could not be processed: a

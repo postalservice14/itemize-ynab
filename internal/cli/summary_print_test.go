@@ -175,6 +175,28 @@ Totals: 1 categorized, 1 split_in_place, 1 skipped (3 total)
 	assert.NotContains(t, printed(sync.Summary{Rows: mixedRows()[:3]}, false), "→")
 }
 
+func TestPrintSummary_needsManualMatchAlwaysListsSplits(t *testing.T) {
+	rows := []sync.Row{
+		{OrderDisplayID: "A-100", AmountCents: 500, Status: sync.StatusCategorized, TxnID: "tA",
+			Splits: []sync.SplitView{{Category: "Groceries", AmountCents: 500}}},
+		{OrderDisplayID: "F-600", AmountCents: 7350, Status: sync.StatusNeedsManualMatch, TxnID: "tF",
+			Note:   "flagged: split it by hand",
+			Splits: []sync.SplitView{{Category: "Household", AmountCents: 4410}, {Category: "Groceries", AmountCents: 2940}}},
+	}
+
+	got := printed(sync.Summary{Rows: rows}, false)
+
+	want := `ORDER  AMOUNT  OUTCOME             YNAB TXN  NOTE
+A-100  $5.00   categorized         tA
+F-600  $73.50  needs_manual_match  tF        flagged: split it by hand
+    Household → $44.10
+    Groceries → $29.40
+
+Totals: 1 categorized, 1 needs_manual_match (2 total)
+`
+	assert.Equal(t, want, got)
+}
+
 func TestPrintSummary_verboseWithNewlinesInCells_staysAligned(t *testing.T) {
 	rows := []sync.Row{
 		{OrderDisplayID: "A-\n100", AmountCents: 500, Status: sync.StatusCategorized, TxnID: "t\nA",

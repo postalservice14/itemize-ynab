@@ -21,14 +21,13 @@ import (
 )
 
 const (
-	planBase   = "/plans/" + plan
-	createPath = planBase + "/transactions"
-	acctA      = "acct-a"
-	acctB      = "acct-b"
-	flagColor  = "purple"
-	catGroc    = "cat-groc"
-	catHome    = "cat-home"
-	testToken  = "tok-SECRET-123"
+	planBase  = "/plans/" + plan
+	acctA     = "acct-a"
+	acctB     = "acct-b"
+	flagColor = "purple"
+	catGroc   = "cat-groc"
+	catHome   = "cat-home"
+	testToken = "tok-SECRET-123"
 )
 
 var now = time.Date(2026, time.October, 9, 12, 0, 0, 0, time.UTC)

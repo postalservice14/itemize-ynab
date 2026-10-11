@@ -20,18 +20,19 @@ const (
 // statusOrder is the order totals are listed in.
 var statusOrder = []sync.Status{
 	sync.StatusCategorized, sync.StatusSplitInPlace, sync.StatusNeedsManualMatch,
-	sync.StatusStagedForImport, sync.StatusSkipped, sync.StatusAlreadyProcessed, sync.StatusFailed,
+	sync.StatusSkipped, sync.StatusAlreadyProcessed, sync.StatusFailed,
 }
 
 // plannedStatuses are the outcomes that write to YNAB; a dry run only plans them.
 var plannedStatuses = map[sync.Status]bool{
 	sync.StatusCategorized: true, sync.StatusSplitInPlace: true,
-	sync.StatusNeedsManualMatch: true, sync.StatusStagedForImport: true,
+	sync.StatusNeedsManualMatch: true,
 }
 
 // PrintSummary writes the run summary (PRD §6.8) to w: the dry-run banner, the
 // charge table, the totals by outcome and, when the run stopped early, the
-// reason. With verbose it lists each row's proposed splits under the row.
+// reason. It lists a row's splits under it with verbose, and always for a
+// needs_manual_match row, whose split the user types in by hand.
 func PrintSummary(w io.Writer, s sync.Summary, verbose bool) {
 	var b strings.Builder
 	if s.DryRun {
@@ -70,7 +71,7 @@ func renderTable(s sync.Summary, verbose bool) string {
 	var out strings.Builder
 	for i, line := range lines {
 		out.WriteString(strings.TrimRight(line, " ") + "\n")
-		if !verbose || i == 0 {
+		if i == 0 || !listSplits(s.Rows[i-1], verbose) {
 			continue
 		}
 		for _, sp := range s.Rows[i-1].Splits {
@@ -78,6 +79,11 @@ func renderTable(s sync.Summary, verbose bool) string {
 		}
 	}
 	return out.String()
+}
+
+// listSplits reports whether the row's splits are printed under it.
+func listSplits(r sync.Row, verbose bool) bool {
+	return verbose || r.Status == sync.StatusNeedsManualMatch
 }
 
 func outcomeLabel(r sync.Row, dryRun bool) string {

@@ -166,7 +166,6 @@ func (o *Orchestrator) prepare(ctx context.Context, opts Options) (*run, error) 
 	}
 	since := o.d.Now().AddDate(0, 0, -opts.Days)
 	txnFrom := since.AddDate(0, 0, -(y.MatchWindow.DaysBefore + 1))
-	wcfg.LoadedFrom = txnFrom
 	return &run{
 		o:       o,
 		opts:    opts,
