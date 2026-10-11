@@ -30,18 +30,18 @@ func TestBuildOrderSplits_fillsLargestChargesFirst(t *testing.T) {
 	require.Len(t, got, 6, "one split list per charge, in input order")
 	// Category totals over $118.63: groceries 5465, camping 3395, animals 2121, maintenance 882.
 	assert.Equal(t, []Split{
-		{CategoryID: "groc", AmountMilli: -54650, Memo: "Blackberries, Groceries rest"},
-		{CategoryID: "camp", AmountMilli: -33950, Memo: "Camp Chair"},
-		{CategoryID: "pets", AmountMilli: -1610, Memo: "Cat Food"},
+		{CategoryID: "groc", AmountMilli: -54650, Memo: "Blackberries ($6.29), Groceries rest ($48.36)"},
+		{CategoryID: "camp", AmountMilli: -33950, Memo: "Camp Chair ($33.95)"},
+		{CategoryID: "pets", AmountMilli: -1610, Memo: "Cat Food ($21.21)"},
 	}, got[4], "$90.21 takes the largest categories")
-	assert.Equal(t, []Split{{CategoryID: "pets", AmountMilli: -8390, Memo: "Cat Food"}}, got[2], "$8.39")
-	assert.Equal(t, []Split{{CategoryID: "pets", AmountMilli: -5790, Memo: "Cat Food"}}, got[1], "$5.79")
+	assert.Equal(t, []Split{{CategoryID: "pets", AmountMilli: -8390, Memo: "Cat Food ($21.21)"}}, got[2], "$8.39")
+	assert.Equal(t, []Split{{CategoryID: "pets", AmountMilli: -5790, Memo: "Cat Food ($21.21)"}}, got[1], "$5.79")
 	assert.Equal(t, []Split{
-		{CategoryID: "pets", AmountMilli: -5420, Memo: "Cat Food"},
-		{CategoryID: "maint", AmountMilli: -280, Memo: "Dish Soap"},
+		{CategoryID: "pets", AmountMilli: -5420, Memo: "Cat Food ($21.21)"},
+		{CategoryID: "maint", AmountMilli: -280, Memo: "Dish Soap ($8.82)"},
 	}, got[0], "$5.70")
-	assert.Equal(t, []Split{{CategoryID: "maint", AmountMilli: -4820, Memo: "Dish Soap"}}, got[5], "$4.82")
-	assert.Equal(t, []Split{{CategoryID: "maint", AmountMilli: -3720, Memo: "Dish Soap"}}, got[3], "$3.72")
+	assert.Equal(t, []Split{{CategoryID: "maint", AmountMilli: -4820, Memo: "Dish Soap ($8.82)"}}, got[5], "$4.82")
+	assert.Equal(t, []Split{{CategoryID: "maint", AmountMilli: -3720, Memo: "Dish Soap ($8.82)"}}, got[3], "$3.72")
 
 	totals := map[string]int64{}
 	for i, splits := range got {
@@ -76,8 +76,8 @@ func TestBuildOrderSplits_equalChargesKeepInputOrderForTies(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, [][]Split{
-		{{CategoryID: "groc", AmountMilli: -5000, Memo: "A"}},
-		{{CategoryID: "camp", AmountMilli: -5000, Memo: "B"}},
+		{{CategoryID: "groc", AmountMilli: -5000, Memo: "A ($5.00)"}},
+		{{CategoryID: "camp", AmountMilli: -5000, Memo: "B ($5.00)"}},
 	}, got)
 }
 

@@ -186,7 +186,11 @@ provider receives item names and the list of your category names; it does not
 receive amounts, card numbers or account IDs. In the same call it returns a
 short name for each item ("Great Value Whole Vitamin D Milk, 1 Gallon" becomes
 "Milk"), and memos list those short names. When the model gives no usable short
-name, the full Walmart name is used.
+name, the full Walmart name is used. Each name is followed by the item's share
+of what you paid, tax, fees and tip included, so "Milk ($3.77), Bread ($2.71)"
+tells you how much to move if you recategorize an item. The shares in a memo add
+up to the category's total for the order. On an order paid in several charges,
+a category split over two charges shows the same order-level shares on both.
 
 ## 3. Cookies are the only Walmart credential
 

@@ -80,7 +80,7 @@ func TestRunOrchestrator_shortNames_buildTheMemos(t *testing.T) {
 		require.True(t, ok)
 		memos = append(memos, sub["memo"])
 	}
-	assert.Equal(t, []any{"Paper towels", "Fruit"}, memos)
+	assert.Equal(t, []any{"Paper towels ($63.00)", "Fruit ($31.50)"}, memos)
 }
 
 func TestRunOrchestrator_pacing_onlyBetweenFetches(t *testing.T) {

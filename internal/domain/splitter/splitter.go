@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	"github.com/postalservice14/itemize-ynab/internal/domain/allocator"
-	"github.com/postalservice14/itemize-ynab/internal/domain/memo"
 )
 
 const milliPerCent = 10
@@ -68,7 +67,7 @@ func (e *UnmappedCategoryError) Error() string {
 type group struct {
 	id     string
 	weight int64
-	names  []string
+	items  []Item
 }
 
 // BuildSplits splits chargeCents across the items' categories. The returned
@@ -148,11 +147,8 @@ func resolveGroups(items []Item, subtotals map[string]int64, order []string, res
 		g.weight += subtotals[name]
 	}
 	for _, it := range items {
-		if it.Name == "" {
-			continue
-		}
 		g := byID[idByName[it.Category]]
-		g.names = append(g.names, it.Name)
+		g.items = append(g.items, it)
 	}
 	return groups, nil
 }
@@ -180,7 +176,7 @@ func allocate(chargeCents int64, groups []*group) ([]Split, error) {
 		splits = append(splits, Split{
 			CategoryID:  g.id,
 			AmountMilli: -cents[i] * milliPerCent,
-			Memo:        memo.Truncate(strings.Join(g.names, ", "), memo.MaxLen),
+			Memo:        groupMemo(g, cents[i]),
 		})
 	}
 	sortSplits(splits)

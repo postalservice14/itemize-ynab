@@ -3,10 +3,8 @@ package splitter
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/postalservice14/itemize-ynab/internal/domain/allocator"
-	"github.com/postalservice14/itemize-ynab/internal/domain/memo"
 )
 
 // BuildOrderSplits splits all of an order's charges at once and returns one
@@ -18,7 +16,9 @@ import (
 // remainder, as in BuildSplits), and the charges are then filled from those
 // totals, largest charge first and largest category first, so each charge
 // spans as few categories as possible. Ties keep input order. One charge gives
-// exactly what BuildSplits gives.
+// exactly what BuildSplits gives. Memos carry each item's share of its
+// category's order total, so a category split over two charges shows the same
+// memo on both.
 func BuildOrderSplits(chargesCents []int64, items []Item, resolve CategoryResolver) ([][]Split, error) {
 	total, err := chargeTotal(chargesCents)
 	if err != nil {
@@ -80,6 +80,10 @@ func fill(chargesCents []int64, groups []*group, targets []int64) [][]Split {
 	chargeOrder := descending(chargesCents)
 	catOrder := descending(targets)
 	remaining := append([]int64(nil), targets...)
+	memos := make([]string, len(groups))
+	for i, g := range groups {
+		memos[i] = groupMemo(g, targets[i])
+	}
 	out := make([][]Split, len(chargesCents))
 	next := 0
 	for _, ci := range chargeOrder {
@@ -88,7 +92,7 @@ func fill(chargesCents []int64, groups []*group, targets []int64) [][]Split {
 			gi := catOrder[next]
 			take := min(need, remaining[gi])
 			if take > 0 {
-				out[ci] = append(out[ci], splitFor(groups[gi], take))
+				out[ci] = append(out[ci], Split{CategoryID: groups[gi].id, AmountMilli: -take * milliPerCent, Memo: memos[gi]})
 				remaining[gi] -= take
 				need -= take
 			}
@@ -99,14 +103,6 @@ func fill(chargesCents []int64, groups []*group, targets []int64) [][]Split {
 		sortSplits(out[ci])
 	}
 	return out
-}
-
-func splitFor(g *group, cents int64) Split {
-	return Split{
-		CategoryID:  g.id,
-		AmountMilli: -cents * milliPerCent,
-		Memo:        memo.Truncate(strings.Join(g.names, ", "), memo.MaxLen),
-	}
 }
 
 // descending returns the indexes of values, largest value first, ties in

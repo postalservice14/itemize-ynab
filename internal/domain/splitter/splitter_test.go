@@ -37,8 +37,8 @@ func TestBuildSplits_proportionalTaxFeeTip(t *testing.T) {
 	got, err := BuildSplits(10850, items, res)
 	require.NoError(t, err)
 	assert.Equal(t, []Split{
-		{CategoryID: "id-house", AmountMilli: -65100, Memo: "Paper towels"},
-		{CategoryID: "id-groc", AmountMilli: -43400, Memo: "Apples"},
+		{CategoryID: "id-house", AmountMilli: -65100, Memo: "Paper towels ($65.10)"},
+		{CategoryID: "id-groc", AmountMilli: -43400, Memo: "Apples ($43.40)"},
 	}, got)
 	assert.Equal(t, int64(-108500), sumMilli(got))
 }
@@ -56,7 +56,7 @@ func TestBuildSplits_mergesCategoriesResolvingToSameID(t *testing.T) {
 	require.Len(t, got, 2)
 	assert.Equal(t, "food", got[0].CategoryID)
 	assert.Equal(t, int64(-6000), got[0].AmountMilli)
-	assert.Equal(t, "Milk, Bread, Eggs", got[0].Memo)
+	assert.Equal(t, "Milk ($3.00), Bread ($2.00), Eggs ($1.00)", got[0].Memo)
 	assert.Equal(t, "home", got[1].CategoryID)
 	assert.Equal(t, int64(-4000), got[1].AmountMilli)
 	assert.Equal(t, int64(-10000), sumMilli(got))
@@ -209,7 +209,7 @@ func TestBuildSplits_memoJoinsNames(t *testing.T) {
 	}
 	got, err := BuildSplits(300, items, mapResolver(map[string]string{"A": "a"}))
 	require.NoError(t, err)
-	assert.Equal(t, "A1, A2", got[0].Memo)
+	assert.Equal(t, "A1 ($1.00), A2 ($1.00)", got[0].Memo, "a nameless item keeps its share")
 }
 
 func TestSingleCategory(t *testing.T) {
