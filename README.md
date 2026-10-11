@@ -183,7 +183,10 @@ redirect target.
 Create a YNAB token in the YNAB web app: Account Settings, Developer Settings,
 New Token. YNAB limits each token to 200 requests per rolling hour. The LLM
 provider receives item names and the list of your category names; it does not
-receive amounts, card numbers or account IDs.
+receive amounts, card numbers or account IDs. In the same call it returns a
+short name for each item ("Great Value Whole Vitamin D Milk, 1 Gallon" becomes
+"Milk"), and memos list those short names. When the model gives no usable short
+name, the full Walmart name is used.
 
 ## 3. Cookies are the only Walmart credential
 

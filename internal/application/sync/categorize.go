@@ -76,7 +76,8 @@ func (c *catalog) explainUnmapped(e *splitter.UnmappedCategoryError) string {
 // model's own category (Assignment.ModelCategory), which makes the result the
 // same whether or not the categorizer applied them already; an assignment
 // without ModelCategory falls back to its Category. Every item must receive
-// exactly one non-empty category.
+// exactly one non-empty category. An item's memo name is the model's short
+// name when it gave one, else the Walmart name.
 func categorizeItems(ctx context.Context, ic ItemCategorizer, items []order.Item, allowed []string,
 	overrides map[string]string,
 ) ([]splitter.Item, error) {
@@ -85,6 +86,7 @@ func categorizeItems(ctx context.Context, ic ItemCategorizer, items []order.Item
 		return nil, err
 	}
 	cats := make([]string, len(items))
+	names := make([]string, len(items))
 	for _, a := range assignments {
 		if a.ItemIndex < 0 || a.ItemIndex >= len(items) {
 			return nil, fmt.Errorf("categorizer returned an assignment for item %d of %d", a.ItemIndex, len(items))
@@ -94,13 +96,18 @@ func categorizeItems(ctx context.Context, ic ItemCategorizer, items []order.Item
 			base = a.Category
 		}
 		cats[a.ItemIndex] = categorizer.ApplyOverrides(base, overrides)
+		names[a.ItemIndex] = a.ShortName
 	}
 	out := make([]splitter.Item, 0, len(items))
 	for i, it := range items {
 		if strings.TrimSpace(cats[i]) == "" {
 			return nil, fmt.Errorf("categorizer returned no category for item %d", i)
 		}
-		out = append(out, splitter.Item{Name: it.Name, Category: cats[i], SubtotalCents: it.SubtotalCents})
+		name := names[i]
+		if name == "" {
+			name = it.Name
+		}
+		out = append(out, splitter.Item{Name: name, Category: cats[i], SubtotalCents: it.SubtotalCents})
 	}
 	return out, nil
 }

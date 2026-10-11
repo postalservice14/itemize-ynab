@@ -5,13 +5,24 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
+	"github.com/postalservice14/itemize-ynab/internal/domain/memo"
 	"github.com/postalservice14/itemize-ynab/internal/domain/order"
 )
 
 type replyItem struct {
 	Index    *int    `json:"index"`
 	Category *string `json:"category"`
+	// Short is raw so a non-string value cannot reject the whole reply.
+	Short json.RawMessage `json:"short"`
+}
+
+// pick is the validated model answer for one item.
+type pick struct {
+	category string
+	short    string
 }
 
 type reply struct {
@@ -35,13 +46,14 @@ func parseReply(text string) (reply, bool) {
 }
 
 // interpret validates a model reply strictly against chunk and vocab. It
-// returns the canonical model category per chunk item, or the problems found.
-func interpret(text string, chunk []order.Item, v vocab) ([]string, []string) {
+// returns the canonical model category and short name per chunk item, or the
+// problems found. Only categories are strict; see shortName.
+func interpret(text string, chunk []order.Item, v vocab) ([]pick, []string) {
 	r, ok := parseReply(text)
 	if !ok {
 		return nil, []string{`the reply was not valid JSON of the form {"items":[{"index":0,"category":"..."}]}`}
 	}
-	out := make([]string, len(chunk))
+	out := make([]pick, len(chunk))
 	seen := make(map[int]bool, len(chunk))
 	var problems []string
 	for _, it := range r.Items {
@@ -59,7 +71,7 @@ func interpret(text string, chunk []order.Item, v vocab) ([]string, []string) {
 	return out, nil
 }
 
-func checkItem(it replyItem, chunk []order.Item, v vocab, seen map[int]bool, out []string) []string {
+func checkItem(it replyItem, chunk []order.Item, v vocab, seen map[int]bool, out []pick) []string {
 	if it.Index == nil {
 		return []string{"an entry has no index"}
 	}
@@ -79,8 +91,27 @@ func checkItem(it replyItem, chunk []order.Item, v vocab, seen map[int]bool, out
 	if !ok {
 		return []string{fmt.Sprintf("index %d (%s) has unknown category %s, which is not in the allowed list", idx, name, quote(*it.Category))}
 	}
-	out[idx] = canon
+	out[idx] = pick{category: canon, short: shortName(it.Short)}
 	return nil
+}
+
+// shortName returns the model's trimmed short name, or "" when it is missing,
+// not a string, longer than maxShortLen runes, or holds a control character or
+// an itemize marker (in any case; a marker in a memo makes the matcher treat
+// the transaction as processed). Short names only decorate memos, so a bad one
+// is dropped quietly instead of failing the categorization or costing a
+// repair call.
+func shortName(raw json.RawMessage) string {
+	var s string
+	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
+		return ""
+	}
+	s = strings.TrimSpace(s)
+	if utf8.RuneCountInString(s) > maxShortLen || strings.IndexFunc(s, unicode.IsControl) >= 0 ||
+		memo.HasMarker(strings.ToLower(s)) {
+		return ""
+	}
+	return s
 }
 
 // quote renders untrusted text as a short, escaped Go string.

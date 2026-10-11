@@ -64,6 +64,25 @@ func TestRunOrchestrator_happyPath_rowsCallsSplitsAndPacing(t *testing.T) {
 	assert.NotContains(t, h.logs.String(), testToken)
 }
 
+func TestRunOrchestrator_shortNames_buildTheMemos(t *testing.T) {
+	h := newOrchHarness(t)
+	h.happy()
+	h.cat.short = map[string]string{"Towels": "Paper towels", "Apples": "Fruit"}
+
+	_, err := h.run(t, Options{Days: 14})
+
+	require.NoError(t, err)
+	subs, ok := sent(t, h.srv.Calls(http.MethodPut, txnPath("tB1"))[0])["subtransactions"].([]any)
+	require.True(t, ok)
+	memos := make([]any, 0, len(subs))
+	for _, s := range subs {
+		sub, ok := s.(map[string]any)
+		require.True(t, ok)
+		memos = append(memos, sub["memo"])
+	}
+	assert.Equal(t, []any{"Paper towels", "Fruit"}, memos)
+}
+
 func TestRunOrchestrator_pacing_onlyBetweenFetches(t *testing.T) {
 	h := newOrchHarness(t)
 	for _, id := range []string{"o1", "o2", "o3"} {

@@ -15,6 +15,8 @@ const (
 	maxChunk = 60
 	// maxTokens bounds one reply (60 items of a few tokens each, with headroom).
 	maxTokens = 4096
+	// maxShortLen is the longest accepted short name, in runes.
+	maxShortLen = 30
 )
 
 var (
@@ -46,6 +48,9 @@ type Assignment struct {
 	Category string
 	// ModelCategory is the canonical category the model chose, before overrides.
 	ModelCategory string
+	// ShortName is the model's brief display name for the item (no brand or
+	// size), or "" when the model gave none or an unusable one.
+	ShortName string
 }
 
 // Categorizer assigns items to categories through a ChatClient.
@@ -89,41 +94,42 @@ func (c *Categorizer) Categorize(ctx context.Context, items []order.Item, allowe
 	out := make([]Assignment, 0, len(items))
 	for start := 0; start < len(items); start += maxChunk {
 		end := min(start+maxChunk, len(items))
-		cats, err := c.categorizeChunk(ctx, system, items[start:end], v)
+		picks, err := c.categorizeChunk(ctx, system, items[start:end], v)
 		if err != nil {
 			return nil, err
 		}
-		for i, cat := range cats {
+		for i, p := range picks {
 			out = append(out, Assignment{
 				ItemIndex:     start + i,
 				Name:          items[start+i].Name,
-				Category:      ApplyOverrides(cat, c.overrides),
-				ModelCategory: cat,
+				Category:      ApplyOverrides(p.category, c.overrides),
+				ModelCategory: p.category,
+				ShortName:     p.short,
 			})
 		}
 	}
 	return out, nil
 }
 
-func (c *Categorizer) categorizeChunk(ctx context.Context, system string, chunk []order.Item, v vocab) ([]string, error) {
+func (c *Categorizer) categorizeChunk(ctx context.Context, system string, chunk []order.Item, v vocab) ([]pick, error) {
 	user := userPrompt(chunk)
 	text, err := c.call(ctx, system, user)
 	if err != nil {
 		return nil, err
 	}
-	cats, problems := interpret(text, chunk, v)
+	picks, problems := interpret(text, chunk, v)
 	if len(problems) == 0 {
-		return cats, nil
+		return picks, nil
 	}
 	text, err = c.call(ctx, system, repairPrompt(user, text, problems))
 	if err != nil {
 		return nil, err
 	}
-	cats, problems = interpret(text, chunk, v)
+	picks, problems = interpret(text, chunk, v)
 	if len(problems) > 0 {
 		return nil, &InvalidResponseError{Problems: problems}
 	}
-	return cats, nil
+	return picks, nil
 }
 
 func (c *Categorizer) call(ctx context.Context, system, user string) (string, error) {

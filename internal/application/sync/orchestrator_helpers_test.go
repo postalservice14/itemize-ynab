@@ -69,6 +69,7 @@ func (p *fakeProvider) calls() int { return len(p.since) + len(p.fetched) }
 // answer that is not among the allowed names it was offered.
 type fakeCategorizer struct {
 	byItem  map[string]string
+	short   map[string]string
 	errFor  map[string]error
 	calls   [][]string
 	allowed [][]string
@@ -95,7 +96,9 @@ func (c *fakeCategorizer) Categorize(_ context.Context, items []order.Item, allo
 			return nil, &categorizer.InvalidResponseError{Problems: []string{
 				fmt.Sprintf("unknown category %q, which is not in the allowed list", cat)}}
 		}
-		out = append(out, categorizer.Assignment{ItemIndex: i, Name: it.Name, Category: cat, ModelCategory: cat})
+		out = append(out, categorizer.Assignment{
+			ItemIndex: i, Name: it.Name, Category: cat, ModelCategory: cat, ShortName: c.short[it.Name],
+		})
 	}
 	return out, nil
 }

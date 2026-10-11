@@ -85,6 +85,7 @@ call from John are collected under "Open decisions for John" near the end.
 ## Writer: memo and clock
 
 - The parent memo is `memo.AppendMarker(existing memo, key)`; existing text is kept and never replaced. The one exception comes from `AppendMarker` itself: if memo plus marker would exceed YNAB's 200-character limit, the tail of the existing text is cut and ends in "…" so the marker always fits. When the existing memo is empty, a single-category charge uses its item names as the base. A multi-category `split_in_place` parent keeps its existing memo plus the marker (marker only if the memo was empty), since the item names are on the subtransactions. A transaction flagged for a manual split keeps its existing memo plus the marker.
+- Item names in memos are short names (decided 2026-10-11, at John's request: long Walmart names were hard to read in YNAB). The categorizer asks for a 1 to 3 word `short` name for each item in the same LLM call that picks its category, so there is no extra call. Short names are checked softly: one that is missing, not a string, over 30 characters, or holds a control character or an `[itemize:` marker (any case) falls back to the full Walmart name. A bad short name never costs a repair call or fails a charge. There is no config switch. The summary and the database don't store item names, so nothing else changes.
 - The clock is injected (`Config.Now`); the writer never reads the system time.
 
 ## Writer: -force

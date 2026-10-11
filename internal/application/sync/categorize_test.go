@@ -101,6 +101,17 @@ func TestCategorizeItems(t *testing.T) {
 			{Name: "Milk", Category: "Groceries", SubtotalCents: 200},
 		}, got)
 	})
+	t.Run("short name replaces the item name when set", func(t *testing.T) {
+		got, err := categorizeItems(context.Background(), scriptedCategorizer{
+			{ItemIndex: 0, Category: "Pets", ShortName: "Dog food"},
+			{ItemIndex: 1, Category: "Groceries"},
+		}, items, nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, []splitter.Item{
+			{Name: "Dog food", Category: "Pets", SubtotalCents: 300},
+			{Name: "Milk", Category: "Groceries", SubtotalCents: 200},
+		}, got)
+	})
 	t.Run("category without model category", func(t *testing.T) {
 		got, err := categorizeItems(context.Background(), scriptedCategorizer{
 			{ItemIndex: 0, Category: "Pet Supplies"}, {ItemIndex: 1, Category: "Groceries"},
