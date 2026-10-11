@@ -26,6 +26,7 @@ const (
 	defaultDaysBefore   = 2
 	defaultDaysAfter    = 10
 	defaultSplitInPlace = "auto"
+	defaultItemizeMax   = 10
 )
 
 // Config is the whole configuration file.
@@ -60,6 +61,7 @@ type YNAB struct {
 	TipCategory       string            // YNAB category for a separately charged tip; "" spreads it
 	MatchWindow       MatchWindow
 	SplitInPlace      string // auto | always
+	ItemizeMaxItems   int    // orders with at most this many items split per item; 0 never
 }
 
 // MatchWindow is how far a YNAB transaction may sit from the order date.
@@ -107,7 +109,8 @@ type rawYNAB struct {
 		DaysBefore *int `yaml:"days_before"`
 		DaysAfter  *int `yaml:"days_after"`
 	} `yaml:"match_window"`
-	SplitInPlace string `yaml:"split_in_place"`
+	SplitInPlace    string `yaml:"split_in_place"`
+	ItemizeMaxItems *int   `yaml:"itemize_max_items"`
 }
 
 // Load reads path and parses it using the process environment.
@@ -163,6 +166,7 @@ func parse(data []byte, lookup func(string) (string, bool), res *pathResolver) (
 		ExcludeCategories: raw.ExcludeCategories,
 		TipCategory:       strings.TrimSpace(exp.expand(raw.TipCategory)),
 		SplitInPlace:      exp.expand(raw.SplitInPlace),
+		ItemizeMaxItems:   intOr(raw.ItemizeMaxItems, defaultItemizeMax),
 		MatchWindow: MatchWindow{
 			DaysBefore: intOr(raw.MatchWindow.DaysBefore, defaultDaysBefore),
 			DaysAfter:  intOr(raw.MatchWindow.DaysAfter, defaultDaysAfter),

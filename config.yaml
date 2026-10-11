@@ -27,6 +27,8 @@ ynab:
     days_before: 2
     days_after: 10
   split_in_place: auto          # auto | always
+  itemize_max_items: 10         # orders with at most this many items get one split
+                                # per item instead of per category; 0 turns it off.
 
 database:
   path: itemize-ynab.db         # SQLite file (default itemize-ynab.db). A relative path

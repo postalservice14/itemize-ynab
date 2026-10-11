@@ -75,6 +75,7 @@ unless your plan has a category named "Pets": change or remove it.
 | `ynab.match_window.days_before` | 2 | How many days before the charge date a YNAB transaction may sit. |
 | `ynab.match_window.days_after` | 10 | How many days after. |
 | `ynab.split_in_place` | `auto` | `auto` or `always`; see below. |
+| `ynab.itemize_max_items` | 10 | An order with at most this many items is split one item per split instead of by category; 0 turns it off. See below. |
 | `database.path` | `itemize-ynab.db` | SQLite file. A relative path resolves against the config file's directory, not the working directory. |
 | `walmart.cookie_file` | `~/.walmart-api/cookies.json` | Walmart cookie store. A leading `~` is the home directory. |
 
@@ -148,6 +149,15 @@ each piece paid for. So the tool splits the order, not each piece on its own:
   above; each category's order total still includes its share of the tip, to
   within a cent. With `ynab.tip_category` set, the tip charge goes to that
   category instead, with the memo "Driver tip".
+
+An order with at most `ynab.itemize_max_items` items (10 by default; a line
+like "Bananas x3" counts once) is split per item instead: each item is its own
+split in its category, with its share of tax and fees and the item's name as
+the memo, so fixing a wrong category means changing one line. Two groceries
+become two grocery lines. The pieces are filled the same way, items in place of
+categories, so an item can show on two pieces. A driver tip charged on its own
+still splits by category, and an order with a negative line (a coupon) is
+always split by category. A one-item order is still just categorized.
 
 The plan covers every charge of the order, written or not, so later runs give
 the same answer as long as Walmart's charges and the item categories do not

@@ -192,13 +192,15 @@ func newWMHarness(t *testing.T) *wmHarness {
 }
 
 // writeConfig writes config.yaml with the database and cookie file in the temp
-// dir; extra is appended verbatim.
+// dir; extra is appended verbatim. Orders A and B are built for category
+// splits, so per-item splitting is off.
 func (h *wmHarness) writeConfig(extra string) {
 	h.t.Helper()
 	h.cfg = filepath.Join(h.dir, "config.yaml")
 	body := fmt.Sprintf(`ynab:
   token: "${YNAB_TOKEN}"
   plan_id: plan-1
+  itemize_max_items: 0
   accounts:
     "%s": %s
 database:

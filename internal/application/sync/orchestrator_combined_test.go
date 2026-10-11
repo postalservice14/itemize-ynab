@@ -136,3 +136,53 @@ func TestRunOrchestrator_noTipCategory_tipIsSplitByTheItems(t *testing.T) {
 	assert.Equal(t, [][2]any{{catHome, -3000.0}, {catGroc, -2000.0}},
 		subAmounts(t, h.srv.Calls(http.MethodPut, txnPath("tTip"))[0]), "the tip is shared 60/40 like the items")
 }
+
+func TestRunOrchestrator_smallOrder_splitsByItemButTipByCategory(t *testing.T) {
+	h := newOrchHarness(t)
+	h.cfg.YNAB.ItemizeMaxItems = 10
+	o, tT, tTip := orderTip()
+	o.Items = []order.Item{item("Towels", 3000), item("Soap", 1000), item("Apples", 1000)}
+	h.prov.add(o)
+	h.withTxns(tT, tTip)
+	h.srv.On(http.MethodPut, txnPath("tT"), okTxn(savedAs(tT, "", []splitter.Split{
+		sp(catHome, -30000, "Towels"), sp(catGroc, -10000, "Apples"), sp(catHome, -10000, "Soap"),
+	})))
+	h.srv.On(http.MethodPut, txnPath("tTip"), okTxn(savedAs(tTip, "", []splitter.Split{
+		sp(catHome, -4000, "Towels"), sp(catGroc, -1000, "Apples"),
+	})))
+
+	sum, err := h.run(t, Options{Days: 14})
+
+	require.NoError(t, err)
+	assert.Equal(t, []Status{StatusSplitInPlace, StatusSplitInPlace}, statuses(sum.Rows))
+	items := h.srv.Calls(http.MethodPut, txnPath("tT"))[0]
+	assert.Equal(t, [][2]any{{catHome, -30000.0}, {catGroc, -10000.0}, {catHome, -10000.0}},
+		subAmounts(t, items), "one split per item, Soap and Towels kept apart")
+	var memos []any
+	for _, s := range subs(t, sent(t, items)) {
+		memos = append(memos, s["memo"])
+	}
+	assert.Equal(t, []any{"Towels", "Apples", "Soap"}, memos)
+	assert.Equal(t, [][2]any{{catHome, -4000.0}, {catGroc, -1000.0}},
+		subAmounts(t, h.srv.Calls(http.MethodPut, txnPath("tTip"))[0]), "the tip stays grouped by category")
+}
+
+func TestRunOrchestrator_itemizeOff_groupsByCategory(t *testing.T) {
+	h := newOrchHarness(t)
+	o, tT, _ := orderTip()
+	o.TipCents = 0
+	o.Charges = o.Charges[:1]
+	o.Items = []order.Item{item("Towels", 3000), item("Soap", 1000), item("Apples", 1000)}
+	h.prov.add(o)
+	h.withTxns(tT)
+	h.srv.On(http.MethodPut, txnPath("tT"), okTxn(savedAs(tT, "", []splitter.Split{
+		sp(catHome, -40000, "Towels, Soap"), sp(catGroc, -10000, "Apples"),
+	})))
+
+	sum, err := h.run(t, Options{Days: 14})
+
+	require.NoError(t, err)
+	assert.Equal(t, []Status{StatusSplitInPlace}, statuses(sum.Rows))
+	assert.Equal(t, [][2]any{{catHome, -40000.0}, {catGroc, -10000.0}},
+		subAmounts(t, h.srv.Calls(http.MethodPut, txnPath("tT"))[0]), "itemize_max_items 0 keeps category grouping")
+}

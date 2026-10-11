@@ -54,6 +54,9 @@ func (c *Config) Validate() error {
 	if y.MatchWindow.DaysAfter < 0 {
 		p = append(p, fmt.Sprintf("ynab.match_window.days_after %d must not be negative", y.MatchWindow.DaysAfter))
 	}
+	if y.ItemizeMaxItems < 0 {
+		p = append(p, fmt.Sprintf("ynab.itemize_max_items %d must not be negative", y.ItemizeMaxItems))
+	}
 	for i, name := range y.ExcludeCategories {
 		if strings.TrimSpace(name) == "" {
 			p = append(p, fmt.Sprintf("ynab.exclude_categories[%d] must not be blank", i))

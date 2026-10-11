@@ -144,6 +144,17 @@ call from John are collected under "Open decisions for John" near the end.
 - A combined bank transaction ("Charges the bank posts together") gets its members' planned splits merged by category.
 - Transactions written before this change keep their proportional splits; re-splitting them is a separate decision.
 
+## Small orders split per item
+
+- Asked for 2026-10-11 so a wrong category is a one-line fix: an order with at most `ynab.itemize_max_items` items (default 10, 0 off) gets one split per item instead of one per category. 4 groceries and 2 misc items give 6 splits.
+- The count is the order's Walmart line items, not units: "Bananas x3" is one item and one split.
+- Each item's share of the charges is the same largest-remainder allocation by subtotal (tax and fees included), and multi-charge orders are filled largest charge first, largest item first, so an item can straddle two charges and show on both. The memo is the item's name alone; the split amount is its price.
+- Items sharing a category stay separate lines, so an all-grocery order of three items is a three-line split. A one-item order is still categorized, not split.
+- A separately charged tip stays split by category (or goes to `tip_category`): spreading it over up to ten items would only add lines of cents.
+- An order with a negative item (a coupon) falls back to category splits, since a negative amount cannot be its own split.
+- A combined bank transaction merges its members' splits per item (`MergeSplits` keys by category and item), so item lines are not folded back into categories.
+- Transactions written before this change keep their category splits.
+
 ## Fallback shape and approval of tool-created transactions
 
 - Status: superseded 2026-10-10 by "Update only: no transaction creation". Kept for history: the tool no longer creates siblings or pre-staged transactions.

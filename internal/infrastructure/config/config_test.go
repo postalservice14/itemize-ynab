@@ -30,6 +30,7 @@ ynab:
     days_before: 3
     days_after: 7
   split_in_place: always
+  itemize_max_items: 6
 `
 
 func TestParse_fullBlockAndEnvExpansion(t *testing.T) {
@@ -44,6 +45,7 @@ func TestParse_fullBlockAndEnvExpansion(t *testing.T) {
 	assert.Equal(t, 3, cfg.YNAB.MatchWindow.DaysBefore)
 	assert.Equal(t, 7, cfg.YNAB.MatchWindow.DaysAfter)
 	assert.Equal(t, "always", cfg.YNAB.SplitInPlace)
+	assert.Equal(t, 6, cfg.YNAB.ItemizeMaxItems)
 }
 
 func TestParse_defaults(t *testing.T) {
@@ -55,6 +57,14 @@ func TestParse_defaults(t *testing.T) {
 	assert.Equal(t, 2, cfg.YNAB.MatchWindow.DaysBefore)
 	assert.Equal(t, 10, cfg.YNAB.MatchWindow.DaysAfter)
 	assert.Equal(t, "auto", cfg.YNAB.SplitInPlace)
+	assert.Equal(t, 10, cfg.YNAB.ItemizeMaxItems)
+}
+
+func TestParse_explicitZeroItemizeMaxItemsIsKept(t *testing.T) {
+	cfg, err := config.Parse([]byte("ynab:\n  token: abc\n  itemize_max_items: 0\n"), env(nil))
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, cfg.YNAB.ItemizeMaxItems)
 }
 
 func TestParse_explicitZeroWindowIsKept(t *testing.T) {
@@ -112,6 +122,7 @@ ynab:
   token: abc
   flag_color: pink
   split_in_place: sometimes
+  itemize_max_items: -3
   match_window:
     days_before: -1
     days_after: -5
@@ -123,7 +134,7 @@ ynab:
 
 	require.ErrorIs(t, err, config.ErrInvalid)
 	for _, want := range []string{"flag_color", "pink", "split_in_place", "sometimes",
-		"days_before", "days_after", `"12"`, `"0953"`} {
+		"days_before", "days_after", "itemize_max_items", `"12"`, `"0953"`} {
 		assert.Contains(t, err.Error(), want)
 	}
 }

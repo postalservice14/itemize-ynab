@@ -24,7 +24,7 @@ var liveResolver = mapResolver(map[string]string{
 })
 
 func TestBuildOrderSplits_fillsLargestChargesFirst(t *testing.T) {
-	got, err := BuildOrderSplits([]int64{570, 579, 839, 372, 9021, 482}, liveOrderItems(), liveResolver)
+	got, err := BuildOrderSplits([]int64{570, 579, 839, 372, 9021, 482}, liveOrderItems(), liveResolver, false)
 
 	require.NoError(t, err)
 	require.Len(t, got, 6, "one split list per charge, in input order")
@@ -61,7 +61,7 @@ func TestBuildOrderSplits_oneChargeMatchesBuildSplits(t *testing.T) {
 	}
 	res := mapResolver(map[string]string{"Household": "id-house", "Groceries": "id-groc"})
 
-	got, err := BuildOrderSplits([]int64{10850}, items, res)
+	got, err := BuildOrderSplits([]int64{10850}, items, res, false)
 	require.NoError(t, err)
 	want, err := BuildSplits(10850, items, res)
 	require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestBuildOrderSplits_oneChargeMatchesBuildSplits(t *testing.T) {
 func TestBuildOrderSplits_equalChargesKeepInputOrderForTies(t *testing.T) {
 	items := []Item{{Name: "A", Category: "Groceries", SubtotalCents: 100}, {Name: "B", Category: "Camping", SubtotalCents: 100}}
 
-	got, err := BuildOrderSplits([]int64{500, 500}, items, liveResolver)
+	got, err := BuildOrderSplits([]int64{500, 500}, items, liveResolver, false)
 
 	require.NoError(t, err)
 	assert.Equal(t, [][]Split{
@@ -97,11 +97,11 @@ func TestBuildOrderSplits_errors(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := BuildOrderSplits(tc.charges, tc.items, tc.res)
+			_, err := BuildOrderSplits(tc.charges, tc.items, tc.res, false)
 			assert.ErrorIs(t, err, tc.want)
 		})
 	}
-	_, err := BuildOrderSplits([]int64{100}, items, mapResolver(nil))
+	_, err := BuildOrderSplits([]int64{100}, items, mapResolver(nil), false)
 	var unmapped *UnmappedCategoryError
 	assert.ErrorAs(t, err, &unmapped)
 }

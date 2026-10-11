@@ -52,6 +52,9 @@ type Split struct {
 	CategoryID  string
 	AmountMilli int64
 	Memo        string
+	// item is the 1-based index of the one item a by-item split pays for; 0
+	// for a category split. MergeSplits keeps different items apart.
+	item int
 }
 
 // UnmappedCategoryError lists every category name the resolver could not map.
@@ -63,11 +66,13 @@ func (e *UnmappedCategoryError) Error() string {
 	return fmt.Sprintf("splitter: unmapped categories: %s", strings.Join(e.Names, ", "))
 }
 
-// group accumulates the items that end up in one YNAB category.
+// group accumulates the items that end up in one split: every item of one
+// YNAB category, or a single item when splitting by item (item > 0).
 type group struct {
 	id     string
 	weight int64
 	items  []Item
+	item   int
 }
 
 // BuildSplits splits chargeCents across the items' categories. The returned
@@ -121,18 +126,9 @@ func categorySubtotals(items []Item) (map[string]int64, []string, error) {
 // resolveGroups maps each category name to a YNAB ID and merges by ID. Every
 // unmapped name is collected into a single error.
 func resolveGroups(items []Item, subtotals map[string]int64, order []string, resolve CategoryResolver) ([]*group, error) {
-	idByName := make(map[string]string, len(order))
-	var unmapped []string
-	for _, name := range order {
-		id, ok := resolve(name)
-		if !ok {
-			unmapped = append(unmapped, name)
-			continue
-		}
-		idByName[name] = id
-	}
-	if len(unmapped) > 0 {
-		return nil, &UnmappedCategoryError{Names: unmapped}
+	idByName, err := resolveNames(order, resolve)
+	if err != nil {
+		return nil, err
 	}
 	byID := make(map[string]*group)
 	var groups []*group
@@ -151,6 +147,25 @@ func resolveGroups(items []Item, subtotals map[string]int64, order []string, res
 		g.items = append(g.items, it)
 	}
 	return groups, nil
+}
+
+// resolveNames maps each category name to a YNAB ID, collecting every
+// unmapped name into a single error.
+func resolveNames(order []string, resolve CategoryResolver) (map[string]string, error) {
+	idByName := make(map[string]string, len(order))
+	var unmapped []string
+	for _, name := range order {
+		id, ok := resolve(name)
+		if !ok {
+			unmapped = append(unmapped, name)
+			continue
+		}
+		idByName[name] = id
+	}
+	if len(unmapped) > 0 {
+		return nil, &UnmappedCategoryError{Names: unmapped}
+	}
+	return idByName, nil
 }
 
 // allocate runs the cent allocation, converts to milliunits and sorts.

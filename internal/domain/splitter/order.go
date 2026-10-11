@@ -19,7 +19,11 @@ import (
 // exactly what BuildSplits gives. Memos carry each item's share of its
 // category's order total, so a category split over two charges shows the same
 // memo on both.
-func BuildOrderSplits(chargesCents []int64, items []Item, resolve CategoryResolver) ([][]Split, error) {
+//
+// With byItem (see ByItem) every item is its own split instead of its
+// category: same allocation and fill, items in place of categories, and the
+// memo is just the item's name.
+func BuildOrderSplits(chargesCents []int64, items []Item, resolve CategoryResolver, byItem bool) ([][]Split, error) {
 	total, err := chargeTotal(chargesCents)
 	if err != nil {
 		return nil, err
@@ -31,7 +35,12 @@ func BuildOrderSplits(chargesCents []int64, items []Item, resolve CategoryResolv
 	if err != nil {
 		return nil, err
 	}
-	groups, err := resolveGroups(items, subtotals, order, resolve)
+	var groups []*group
+	if byItem {
+		groups, err = itemGroups(items, order, resolve)
+	} else {
+		groups, err = resolveGroups(items, subtotals, order, resolve)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +91,7 @@ func fill(chargesCents []int64, groups []*group, targets []int64) [][]Split {
 	remaining := append([]int64(nil), targets...)
 	memos := make([]string, len(groups))
 	for i, g := range groups {
-		memos[i] = groupMemo(g, targets[i])
+		memos[i] = splitMemo(g, targets[i])
 	}
 	out := make([][]Split, len(chargesCents))
 	next := 0
@@ -92,7 +101,7 @@ func fill(chargesCents []int64, groups []*group, targets []int64) [][]Split {
 			gi := catOrder[next]
 			take := min(need, remaining[gi])
 			if take > 0 {
-				out[ci] = append(out[ci], Split{CategoryID: groups[gi].id, AmountMilli: -take * milliPerCent, Memo: memos[gi]})
+				out[ci] = append(out[ci], Split{CategoryID: groups[gi].id, AmountMilli: -take * milliPerCent, Memo: memos[gi], item: groups[gi].item})
 				remaining[gi] -= take
 				need -= take
 			}
@@ -117,17 +126,23 @@ func descending(values []int64) []int {
 }
 
 // MergeSplits combines split lists into one, summing amounts per category and
-// keeping each category's first memo. The result is sorted like BuildSplits.
+// keeping each category's first memo. By-item splits merge per item instead,
+// so each item keeps its own line. The result is sorted like BuildSplits.
 func MergeSplits(lists ...[]Split) []Split {
+	type key struct {
+		cat  string
+		item int
+	}
 	var out []Split
-	pos := map[string]int{}
+	pos := map[key]int{}
 	for _, list := range lists {
 		for _, s := range list {
-			if i, ok := pos[s.CategoryID]; ok {
+			k := key{s.CategoryID, s.item}
+			if i, ok := pos[k]; ok {
 				out[i].AmountMilli += s.AmountMilli
 				continue
 			}
-			pos[s.CategoryID] = len(out)
+			pos[k] = len(out)
 			out = append(out, s)
 		}
 	}
