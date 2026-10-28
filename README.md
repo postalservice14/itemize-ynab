@@ -1,5 +1,7 @@
 # itemize-ynab
 
+`bin/itemize-ynab -config config.local.yaml walmart -days 14`
+
 A personal command-line tool that splits Walmart card charges in YNAB by item
 category. It reads your Walmart orders (and the card charges Walmart actually
 made for them), asks an LLM to put each item in one of your YNAB categories,
