@@ -115,6 +115,31 @@ func TestRunOrchestrator_tipCategory_tipChargeGoesToIt(t *testing.T) {
 	assert.Equal(t, "Driver tip [itemize:"+o.Charges[1].Key+"]", body["memo"])
 }
 
+func TestRunOrchestrator_tipCategory_ledgerLabelFindsTheTip(t *testing.T) {
+	h := newOrchHarness(t)
+	h.cfg.YNAB.TipCategory = "pets"
+	o, tT, tTip := orderTip()
+	o.TipCents = 0 // the order detail does not expose the tip; only the ledger label tells
+	o.Charges[0].Kind = order.KindOrder
+	o.Charges[1].Kind = order.KindTip
+	h.prov.add(o)
+	h.withTxns(tT, tTip)
+	h.srv.On(http.MethodPut, txnPath("tT"), okTxn(savedAs(tT, "", []splitter.Split{
+		sp(catHome, -30000, "Towels"), sp(catGroc, -20000, "Apples"),
+	})))
+	h.srv.On(http.MethodPut, txnPath("tTip"), okTxn(tTip))
+
+	sum, err := h.run(t, Options{Days: 14})
+
+	require.NoError(t, err)
+	assert.Equal(t, []Status{StatusSplitInPlace, StatusCategorized}, statuses(sum.Rows))
+	assert.Equal(t, [][2]any{{catHome, -30000.0}, {catGroc, -20000.0}},
+		subAmounts(t, h.srv.Calls(http.MethodPut, txnPath("tT"))[0]), "the tip is not part of the item split")
+	body := sent(t, h.srv.Calls(http.MethodPut, txnPath("tTip"))[0])
+	assert.Equal(t, catPets, body["category_id"])
+	assert.Equal(t, "Driver tip [itemize:"+o.Charges[1].Key+"]", body["memo"])
+}
+
 func TestRunOrchestrator_noTipCategory_tipIsSplitByTheItems(t *testing.T) {
 	h := newOrchHarness(t)
 	o, tT, tTip := orderTip()

@@ -13,6 +13,8 @@ import (
 const (
 	paymentCreditCard = "CREDITCARD"
 	paymentGiftCard   = "GIFTCARD"
+
+	lineDriverTip = "ADDITIONAL_DRIVER_TIP"
 )
 
 // deriveCharges turns a ledger into card Charges and Skipped entries.
@@ -28,6 +30,7 @@ const (
 // the order date when the ledger date is missing, zero or the date slice is
 // shorter than the charge slice. If the order date is also zero the charge
 // date is zero and its source is OrderDateFallback; no date is invented.
+// A charge's Kind comes from its ledger line type (see chargeKind).
 func deriveCharges(orderID string, orderDate time.Time, ledger *wm.OrderLedger) ([]order.Charge, []order.SkippedCharge, error) {
 	if ledger == nil {
 		return nil, nil, nil
@@ -65,6 +68,7 @@ func deriveCharges(orderID string, orderDate time.Time, ledger *wm.OrderLedger) 
 				LastFour:    pm.LastFour,
 				PaymentType: pm.PaymentType,
 				CardType:    pm.CardType,
+				Kind:        chargeKind(pm.LineTypes, i),
 			})
 		}
 	}
@@ -83,6 +87,22 @@ func skipReason(paymentType string, cents int64) (order.SkipReason, bool) {
 		return order.GiftCard, true
 	default:
 		return order.NonCardPayment, true
+	}
+}
+
+// chargeKind maps the ledger line type of charge i: the driver tip label is a
+// tip, any other label pays the order, and a missing or blank one is unknown.
+func chargeKind(lineTypes []string, i int) order.ChargeKind {
+	if i >= len(lineTypes) {
+		return order.KindUnknown
+	}
+	switch strings.ToUpper(strings.TrimSpace(lineTypes[i])) {
+	case "":
+		return order.KindUnknown
+	case lineDriverTip:
+		return order.KindTip
+	default:
+		return order.KindOrder
 	}
 }
 

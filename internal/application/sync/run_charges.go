@@ -61,28 +61,29 @@ func (r *run) processCharges(ctx context.Context, display string, o order.Order,
 }
 
 // orderSplits plans the splits of every charge of the order, written or not,
-// so the plan is the same on every run. A separately charged tip is split by
+// so the plan is the same on every run. Each separately charged tip is split by
 // the items' categories on its own (or goes to tip_category when one is set),
 // and the other charges are filled from the items' category totals, or from
 // each item's own total when the order is small enough to split by item.
 func (r *run) orderSplits(o order.Order, items []splitter.Item) ([][]splitter.Split, error) {
 	plan := make([][]splitter.Split, len(o.Charges))
-	tipIdx, isTip := order.TipCharge(o)
+	isTip := make(map[int]bool)
+	for _, i := range order.TipCharges(o) {
+		tip, err := r.tipSplits(o.Charges[i].AmountCents, items)
+		if err != nil {
+			return nil, err
+		}
+		plan[i] = tip
+		isTip[i] = true
+	}
 	var idx []int
 	var amounts []int64
 	for i, c := range o.Charges {
-		if isTip && i == tipIdx {
+		if isTip[i] {
 			continue
 		}
 		idx = append(idx, i)
 		amounts = append(amounts, c.AmountCents)
-	}
-	if isTip {
-		tip, err := r.tipSplits(o.Charges[tipIdx].AmountCents, items)
-		if err != nil {
-			return nil, err
-		}
-		plan[tipIdx] = tip
 	}
 	if len(idx) == 0 {
 		return plan, nil

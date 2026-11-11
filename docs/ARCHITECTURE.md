@@ -172,6 +172,7 @@ PaymentMethodCharges{
   LastFour     string      // parsed from "Ending in 0953"; "" if no match
   FinalCharges []float64   // one entry per charge, dollars
   ChargedDates []time.Time // parallel to FinalCharges; zero value if unparsable
+  LineTypes    []string    // parallel to FinalCharges: "ORDER_CHARGE", "ADDITIONAL_DRIVER_TIP", ... (fork only, see DECISIONS.md)
   TotalCharged float64
 }
 ```
@@ -179,8 +180,10 @@ PaymentMethodCharges{
 Only `ChargeType == "FINAL_CHARGES"` transactions are included; temporary holds
 are dropped; methods with no final charges are omitted (`ledger.go:263-297`).
 Refund rows (negative amounts such as `-$15.00` parse to negative floats, e.g.
-`ORDER_ADJUSTMENT_REFUND` line types) would appear in `FinalCharges`, but the
-client does not look at `LineType`, so whether refunds land there is UNVERIFIED.
+`ORDER_ADJUSTMENT_REFUND` line types) would appear in `FinalCharges`; whether
+refunds land there is UNVERIFIED. The adapter maps each charge's line type to
+`order.Charge.Kind`: `ADDITIONAL_DRIVER_TIP` is a tip, any other label an order
+charge, a blank or missing one unknown.
 `ChargedDates` come from `"Jan 2, 2006 3:04 PM"` strings parsed with
 `time.Parse` (no zone, so UTC); date-only fallback; zero time on failure
 (`ledger.go:335-372`). The time is in Walmart's local zone but labeled UTC:
