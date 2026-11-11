@@ -154,3 +154,26 @@ func TestDeriveCharges_paymentTypeCaseInsensitive(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, charges, 1)
 }
+
+func TestDeriveCharges_lineTypesBecomeKinds(t *testing.T) {
+	pm := card("1041", []float64{4.00, 39.96, 15.95, 1.00}, []time.Time{d2, d1, d1, d1})
+	pm.LineTypes = []string{"ADDITIONAL_DRIVER_TIP", "ORDER_CHARGE", "SOMETHING_NEW", ""}
+	charges, _, err := deriveCharges("W1", orderDate, &wm.OrderLedger{PaymentMethods: []wm.PaymentMethodCharges{pm}})
+
+	require.NoError(t, err)
+	require.Len(t, charges, 4)
+	assert.Equal(t, order.KindTip, charges[0].Kind)
+	assert.Equal(t, order.KindOrder, charges[1].Kind)
+	assert.Equal(t, order.KindOrder, charges[2].Kind, "any other label is an order charge")
+	assert.Equal(t, order.KindUnknown, charges[3].Kind, "a blank label is no label")
+}
+
+func TestDeriveCharges_missingLineTypesAreUnknown(t *testing.T) {
+	pm := card("1041", []float64{4.00, 39.96}, []time.Time{d1, d1})
+	pm.LineTypes = []string{"ADDITIONAL_DRIVER_TIP"}
+	charges, _, err := deriveCharges("W1", orderDate, &wm.OrderLedger{PaymentMethods: []wm.PaymentMethodCharges{pm}})
+
+	require.NoError(t, err)
+	assert.Equal(t, order.KindTip, charges[0].Kind)
+	assert.Equal(t, order.KindUnknown, charges[1].Kind)
+}

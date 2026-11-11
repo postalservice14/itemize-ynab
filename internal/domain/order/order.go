@@ -21,6 +21,18 @@ const (
 	OrderDateFallback
 )
 
+// ChargeKind is what the retailer's ledger says a charge pays for.
+type ChargeKind int
+
+// Charge kinds. KindUnknown is the zero value: the ledger did not say.
+const (
+	KindUnknown ChargeKind = iota
+	// KindOrder: the charge pays for the order (items, tax, fees).
+	KindOrder
+	// KindTip: the charge pays only the driver tip.
+	KindTip
+)
+
 // SkipReason says why a ledger entry did not become a Charge.
 type SkipReason int
 
@@ -95,6 +107,9 @@ type Charge struct {
 	// PaymentType and CardType are the retailer's raw labels.
 	PaymentType string
 	CardType    string
+	// Kind is what the ledger labels the charge as; KindUnknown when it has
+	// no label.
+	Kind ChargeKind
 }
 
 // SkippedCharge is a ledger entry that is not a card charge to match.

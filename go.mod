@@ -26,3 +26,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
+
+replace github.com/eshaffer321/walmart-client-go/v2 => github.com/postalservice14/walmart-client-go/v2 v2.2.2-lineTypes.1
